@@ -1,31 +1,30 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Redirect } from 'expo-router';
+import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { useAuth } from '../src/hooks/useAuth';
 
-export default function HomeScreen() {
-  return (
-    <View style={styles.container}>
-      <Text style={styles.title}>TrygKreds</Text>
-      <Text style={styles.subtitle}>
-        A privacy-friendly alternative to Life360
-      </Text>
-    </View>
-  );
+export default function Index() {
+  const { isLoading, isAuthenticated } = useAuth();
+
+  if (isLoading) {
+    return (
+      <View style={styles.container}>
+        <ActivityIndicator size="large" color="#4F46E5" />
+      </View>
+    );
+  }
+
+  if (isAuthenticated) {
+    return <Redirect href="/(app)/groups" />;
+  }
+
+  return <Redirect href="/(auth)/login" />;
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    alignItems: 'center',
     justifyContent: 'center',
-    padding: 20,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    marginBottom: 10,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
+    alignItems: 'center',
+    backgroundColor: '#fff',
   },
 });
