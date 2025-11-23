@@ -10,6 +10,29 @@ export default function AppLayout() {
           headerShown: false,
         }}
       />
+      <Stack.Screen
+        name="create-group"
+        options={{
+          title: 'Create Group',
+          headerShown: false,
+          presentation: 'modal',
+        }}
+      />
+      <Stack.Screen
+        name="join-group"
+        options={{
+          title: 'Join Group',
+          headerShown: false,
+          presentation: 'modal',
+        }}
+      />
+      <Stack.Screen
+        name="group/[id]"
+        options={{
+          title: 'Group',
+          headerShown: true,
+        }}
+      />
     </Stack>
   );
 }
