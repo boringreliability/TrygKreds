@@ -4,18 +4,98 @@
  * Displays the user's groups and options to create/join groups.
  */
 
-import React from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
   SafeAreaView,
+  FlatList,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { useAuth } from '../hooks/useAuth';
+import { getMyGroups, type GroupWithRole } from '../domain/groups';
 
-export function GroupsScreen() {
+interface GroupsScreenProps {
+  onCreateGroup?: () => void;
+  onJoinGroup?: () => void;
+  onSelectGroup?: (group: GroupWithRole) => void;
+}
+
+export function GroupsScreen({
+  onCreateGroup,
+  onJoinGroup,
+  onSelectGroup,
+}: GroupsScreenProps) {
   const { user, signOut } = useAuth();
+  const [groups, setGroups] = useState<GroupWithRole[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const loadGroups = useCallback(async () => {
+    if (!user?.id) return;
+
+    const result = await getMyGroups(user.id);
+    if (result.success && result.groups) {
+      setGroups(result.groups);
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    const init = async () => {
+      await loadGroups();
+      setIsLoading(false);
+    };
+    init();
+  }, [loadGroups]);
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await loadGroups();
+    setIsRefreshing(false);
+  };
+
+  const renderGroup = ({ item }: { item: GroupWithRole }) => (
+    <TouchableOpacity
+      style={styles.groupItem}
+      onPress={() => onSelectGroup?.(item)}
+    >
+      <View style={styles.groupIcon}>
+        <Text style={styles.groupIconText}>
+          {item.name.charAt(0).toUpperCase()}
+        </Text>
+      </View>
+      <View style={styles.groupInfo}>
+        <Text style={styles.groupName}>{item.name}</Text>
+        <Text style={styles.groupRole}>
+          {item.role === 'owner' ? 'Owner' : 'Member'}
+        </Text>
+      </View>
+      <Text style={styles.groupArrow}>›</Text>
+    </TouchableOpacity>
+  );
+
+  const renderEmpty = () => (
+    <View style={styles.emptyState}>
+      <Text style={styles.emptyIcon}>👥</Text>
+      <Text style={styles.emptyText}>You&apos;re not in any groups yet</Text>
+      <Text style={styles.emptySubtext}>
+        Create a group or join one with an invite code
+      </Text>
+    </View>
+  );
+
+  if (isLoading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#4F46E5" />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -24,24 +104,32 @@ export function GroupsScreen() {
         <Text style={styles.email}>{user?.email}</Text>
       </View>
 
-      <View style={styles.content}>
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyIcon}>👥</Text>
-          <Text style={styles.emptyText}>You&apos;re not in any groups yet</Text>
-          <Text style={styles.emptySubtext}>
-            Create a group or join one with an invite code
-          </Text>
-        </View>
+      {groups.length > 0 ? (
+        <FlatList
+          data={groups}
+          renderItem={renderGroup}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={handleRefresh}
+              tintColor="#4F46E5"
+            />
+          }
+        />
+      ) : (
+        <View style={styles.content}>{renderEmpty()}</View>
+      )}
 
-        <View style={styles.actions}>
-          <TouchableOpacity style={styles.primaryButton}>
-            <Text style={styles.primaryButtonText}>Create Group</Text>
-          </TouchableOpacity>
+      <View style={styles.actions}>
+        <TouchableOpacity style={styles.primaryButton} onPress={onCreateGroup}>
+          <Text style={styles.primaryButtonText}>Create Group</Text>
+        </TouchableOpacity>
 
-          <TouchableOpacity style={styles.secondaryButton}>
-            <Text style={styles.secondaryButtonText}>Join Group</Text>
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity style={styles.secondaryButton} onPress={onJoinGroup}>
+          <Text style={styles.secondaryButtonText}>Join Group</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.footer}>
@@ -57,6 +145,11 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   header: {
     paddingHorizontal: 24,
@@ -80,6 +173,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 24,
   },
+  listContent: {
+    padding: 16,
+  },
   emptyState: {
     alignItems: 'center',
     marginBottom: 32,
@@ -99,8 +195,51 @@ const styles = StyleSheet.create({
     color: '#666',
     textAlign: 'center',
   },
+  groupItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f9f9f9',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+  },
+  groupIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#4F46E5',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  groupIconText: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  groupInfo: {
+    flex: 1,
+    marginLeft: 16,
+  },
+  groupName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111',
+  },
+  groupRole: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 2,
+  },
+  groupArrow: {
+    fontSize: 24,
+    color: '#ccc',
+  },
   actions: {
+    paddingHorizontal: 24,
+    paddingVertical: 16,
     gap: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
   },
   primaryButton: {
     backgroundColor: '#4F46E5',
