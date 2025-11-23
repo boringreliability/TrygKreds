@@ -289,7 +289,7 @@ describe('Groups Domain', () => {
       mockSupabaseFrom.mockReturnValue(updateMock);
       mockSupabaseRpc.mockResolvedValue({ data: 'NEWCODE1', error: null });
 
-      const result = await generateNewInviteCode('group-123', 'user-123');
+      const result = await generateNewInviteCode('group-123');
 
       expect(result.success).toBe(true);
       expect(result.inviteCode).toBeDefined();

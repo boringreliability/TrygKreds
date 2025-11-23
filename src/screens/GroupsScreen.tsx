@@ -35,13 +35,13 @@ export function GroupsScreen({
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const loadGroups = useCallback(async () => {
-    if (!user) return;
+    if (!user?.id) return;
 
     const result = await getMyGroups(user.id);
     if (result.success && result.groups) {
       setGroups(result.groups);
     }
-  }, [user]);
+  }, [user?.id]);
 
   useEffect(() => {
     const init = async () => {

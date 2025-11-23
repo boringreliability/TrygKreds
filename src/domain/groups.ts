@@ -246,10 +246,9 @@ export async function getGroupById(groupId: string): Promise<GroupResult> {
   };
 }
 
-// Generate a new invite code (owner only)
+// Generate a new invite code (owner only - authorization handled by RLS)
 export async function generateNewInviteCode(
-  groupId: string,
-  _ownerId: string
+  groupId: string
 ): Promise<{ success: boolean; inviteCode?: string; error?: string }> {
   // Generate new code using database function
   const { data: newCode, error: rpcError } = await supabase.rpc(

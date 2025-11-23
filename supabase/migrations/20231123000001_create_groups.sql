@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS groups (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL CHECK (char_length(name) >= 1 AND char_length(name) <= 50),
   owner_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  invite_code TEXT UNIQUE NOT NULL DEFAULT encode(gen_random_bytes(4), 'hex'),
+  invite_code TEXT UNIQUE NOT NULL DEFAULT upper(encode(gen_random_bytes(4), 'hex')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -119,7 +119,7 @@ CREATE POLICY "Members can leave groups"
     AND role != 'owner'
   );
 
--- View for groups with member count
+-- View for groups with member count (used for displaying member count in group list)
 CREATE OR REPLACE VIEW groups_with_member_count AS
 SELECT
   g.*,
