@@ -1,0 +1,355 @@
+/**
+ * Ward 3: Location Domain Tests
+ *
+ * Feature: Basic location sharing
+ * Tests for location sharing functionality (mocking Supabase and Expo Location)
+ */
+
+import {
+  updateMyLocation,
+  getGroupMemberLocations,
+  enableLocationSharing,
+  disableLocationSharing,
+  getLocationSharingStatus,
+  removeMyLocation,
+  type LocationCoordinates,
+} from './location';
+
+// Mock Supabase client
+const mockSupabaseFrom = jest.fn();
+
+jest.mock('../services/supabase', () => ({
+  supabase: {
+    from: (table: string) => mockSupabaseFrom(table),
+  },
+}));
+
+// Helper to create chainable mock
+const createChainableMock = (finalResult: unknown) => {
+  const mock = {
+    select: jest.fn().mockReturnThis(),
+    insert: jest.fn().mockReturnThis(),
+    update: jest.fn().mockReturnThis(),
+    upsert: jest.fn().mockReturnThis(),
+    delete: jest.fn().mockReturnThis(),
+    eq: jest.fn().mockReturnThis(),
+    in: jest.fn().mockReturnThis(),
+    single: jest.fn().mockResolvedValue(finalResult),
+    then: (resolve: (value: unknown) => void) => resolve(finalResult),
+  };
+  return mock;
+};
+
+describe('Location Domain', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  describe('updateMyLocation', () => {
+    const mockUserId = 'user-123';
+    const mockGroupId = 'group-123';
+    const mockCoordinates: LocationCoordinates = {
+      latitude: 55.6761,
+      longitude: 12.5683,
+      accuracy: 10,
+    };
+
+    it('should update location when sharing is enabled', async () => {
+      const chainMock = createChainableMock({
+        data: {
+          id: 'loc-123',
+          user_id: mockUserId,
+          group_id: mockGroupId,
+          latitude: mockCoordinates.latitude,
+          longitude: mockCoordinates.longitude,
+          accuracy: mockCoordinates.accuracy,
+          updated_at: new Date().toISOString(),
+        },
+        error: null,
+      });
+      mockSupabaseFrom.mockReturnValue(chainMock);
+
+      const result = await updateMyLocation(mockUserId, mockGroupId, mockCoordinates);
+
+      expect(result.success).toBe(true);
+      expect(mockSupabaseFrom).toHaveBeenCalledWith('member_locations');
+      expect(chainMock.upsert).toHaveBeenCalled();
+    });
+
+    it('should return error when update fails', async () => {
+      const chainMock = createChainableMock({
+        data: null,
+        error: { message: 'Database error' },
+      });
+      mockSupabaseFrom.mockReturnValue(chainMock);
+
+      const result = await updateMyLocation(mockUserId, mockGroupId, mockCoordinates);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Database error');
+    });
+
+    it('should reject invalid coordinates', async () => {
+      const invalidCoordinates: LocationCoordinates = {
+        latitude: 200, // Invalid: must be between -90 and 90
+        longitude: 12.5683,
+        accuracy: 10,
+      };
+
+      const result = await updateMyLocation(mockUserId, mockGroupId, invalidCoordinates);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Invalid coordinates');
+      expect(mockSupabaseFrom).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getGroupMemberLocations', () => {
+    const mockGroupId = 'group-123';
+
+    it('should return locations for group members', async () => {
+      const mockLocations = [
+        {
+          id: 'loc-1',
+          user_id: 'user-1',
+          group_id: mockGroupId,
+          latitude: 55.6761,
+          longitude: 12.5683,
+          accuracy: 10,
+          updated_at: new Date().toISOString(),
+        },
+        {
+          id: 'loc-2',
+          user_id: 'user-2',
+          group_id: mockGroupId,
+          latitude: 55.6762,
+          longitude: 12.5684,
+          accuracy: 15,
+          updated_at: new Date().toISOString(),
+        },
+      ];
+
+      const selectMock = {
+        select: jest.fn().mockReturnThis(),
+        eq: jest.fn().mockResolvedValue({ data: mockLocations, error: null }),
+      };
+      mockSupabaseFrom.mockReturnValue(selectMock);
+
+      const result = await getGroupMemberLocations(mockGroupId);
+
+      expect(result.success).toBe(true);
+      expect(result.locations).toHaveLength(2);
+      expect(result.locations?.[0].latitude).toBe(55.6761);
+    });
+
+    it('should return empty array when no locations', async () => {
+      const selectMock = {
+        select: jest.fn().mockReturnThis(),
+        eq: jest.fn().mockResolvedValue({ data: [], error: null }),
+      };
+      mockSupabaseFrom.mockReturnValue(selectMock);
+
+      const result = await getGroupMemberLocations(mockGroupId);
+
+      expect(result.success).toBe(true);
+      expect(result.locations).toHaveLength(0);
+    });
+
+    it('should handle database error', async () => {
+      const selectMock = {
+        select: jest.fn().mockReturnThis(),
+        eq: jest.fn().mockResolvedValue({ data: null, error: { message: 'Database error' } }),
+      };
+      mockSupabaseFrom.mockReturnValue(selectMock);
+
+      const result = await getGroupMemberLocations(mockGroupId);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Database error');
+    });
+  });
+
+  describe('enableLocationSharing', () => {
+    const mockUserId = 'user-123';
+    const mockGroupId = 'group-123';
+
+    it('should enable location sharing for a group', async () => {
+      const chainMock = createChainableMock({
+        data: {
+          id: 'sharing-123',
+          user_id: mockUserId,
+          group_id: mockGroupId,
+          sharing_enabled: true,
+        },
+        error: null,
+      });
+      mockSupabaseFrom.mockReturnValue(chainMock);
+
+      const result = await enableLocationSharing(mockUserId, mockGroupId);
+
+      expect(result.success).toBe(true);
+      expect(mockSupabaseFrom).toHaveBeenCalledWith('location_sharing_settings');
+    });
+
+    it('should handle error when enabling fails', async () => {
+      const chainMock = createChainableMock({
+        data: null,
+        error: { message: 'Failed to enable sharing' },
+      });
+      mockSupabaseFrom.mockReturnValue(chainMock);
+
+      const result = await enableLocationSharing(mockUserId, mockGroupId);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Failed to enable sharing');
+    });
+  });
+
+  describe('disableLocationSharing', () => {
+    const mockUserId = 'user-123';
+    const mockGroupId = 'group-123';
+
+    it('should disable location sharing for a group', async () => {
+      const chainMock = createChainableMock({
+        data: {
+          id: 'sharing-123',
+          user_id: mockUserId,
+          group_id: mockGroupId,
+          sharing_enabled: false,
+        },
+        error: null,
+      });
+      mockSupabaseFrom.mockReturnValue(chainMock);
+
+      const result = await disableLocationSharing(mockUserId, mockGroupId);
+
+      expect(result.success).toBe(true);
+      expect(mockSupabaseFrom).toHaveBeenCalledWith('location_sharing_settings');
+    });
+  });
+
+  describe('getLocationSharingStatus', () => {
+    const mockUserId = 'user-123';
+    const mockGroupId = 'group-123';
+
+    it('should return sharing status when enabled', async () => {
+      const chainMock = createChainableMock({
+        data: {
+          id: 'sharing-123',
+          user_id: mockUserId,
+          group_id: mockGroupId,
+          sharing_enabled: true,
+          created_at: new Date().toISOString(),
+        },
+        error: null,
+      });
+      mockSupabaseFrom.mockReturnValue(chainMock);
+
+      const result = await getLocationSharingStatus(mockUserId, mockGroupId);
+
+      expect(result.success).toBe(true);
+      expect(result.status?.sharingEnabled).toBe(true);
+    });
+
+    it('should return disabled status when no record exists', async () => {
+      const chainMock = createChainableMock({
+        data: null,
+        error: { code: 'PGRST116' }, // No rows returned
+      });
+      mockSupabaseFrom.mockReturnValue(chainMock);
+
+      const result = await getLocationSharingStatus(mockUserId, mockGroupId);
+
+      expect(result.success).toBe(true);
+      expect(result.status?.sharingEnabled).toBe(false);
+    });
+  });
+
+  describe('removeMyLocation', () => {
+    const mockUserId = 'user-123';
+    const mockGroupId = 'group-123';
+
+    it('should remove location from group', async () => {
+      const deleteMock = createChainableMock({
+        data: { id: 'loc-123' },
+        error: null,
+      });
+      mockSupabaseFrom.mockReturnValue(deleteMock);
+
+      const result = await removeMyLocation(mockUserId, mockGroupId);
+
+      expect(result.success).toBe(true);
+      expect(mockSupabaseFrom).toHaveBeenCalledWith('member_locations');
+    });
+
+    it('should handle delete error', async () => {
+      const deleteMock = createChainableMock({
+        data: null,
+        error: { message: 'Delete failed' },
+      });
+      mockSupabaseFrom.mockReturnValue(deleteMock);
+
+      const result = await removeMyLocation(mockUserId, mockGroupId);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Delete failed');
+    });
+  });
+
+  describe('coordinate validation', () => {
+    const mockUserId = 'user-123';
+    const mockGroupId = 'group-123';
+
+    it('should reject latitude outside valid range', async () => {
+      const result = await updateMyLocation(mockUserId, mockGroupId, {
+        latitude: 91,
+        longitude: 0,
+        accuracy: 10,
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Invalid coordinates');
+    });
+
+    it('should reject longitude outside valid range', async () => {
+      const result = await updateMyLocation(mockUserId, mockGroupId, {
+        latitude: 0,
+        longitude: 181,
+        accuracy: 10,
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Invalid coordinates');
+    });
+
+    it('should accept edge case coordinates', async () => {
+      const chainMock = createChainableMock({
+        data: { id: 'loc-123' },
+        error: null,
+      });
+      mockSupabaseFrom.mockReturnValue(chainMock);
+
+      // North pole
+      const result1 = await updateMyLocation(mockUserId, mockGroupId, {
+        latitude: 90,
+        longitude: 0,
+        accuracy: 10,
+      });
+      expect(result1.success).toBe(true);
+
+      // South pole
+      const result2 = await updateMyLocation(mockUserId, mockGroupId, {
+        latitude: -90,
+        longitude: 0,
+        accuracy: 10,
+      });
+      expect(result2.success).toBe(true);
+
+      // Date line
+      const result3 = await updateMyLocation(mockUserId, mockGroupId, {
+        latitude: 0,
+        longitude: 180,
+        accuracy: 10,
+      });
+      expect(result3.success).toBe(true);
+    });
+  });
+});

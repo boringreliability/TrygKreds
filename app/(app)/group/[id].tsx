@@ -1,32 +1,15 @@
-import { useLocalSearchParams } from 'expo-router';
-import { View, Text, StyleSheet } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { GroupMapScreen } from '../../../src/screens';
 
 export default function GroupDetail() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, name } = useLocalSearchParams<{ id: string; name?: string }>();
+  const router = useRouter();
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.text}>Group Detail: {id}</Text>
-      <Text style={styles.subtext}>Coming in Ward 3</Text>
-    </View>
+    <GroupMapScreen
+      groupId={id}
+      groupName={name || 'Group'}
+      onBack={() => router.back()}
+    />
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-  },
-  text: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#111',
-  },
-  subtext: {
-    fontSize: 14,
-    color: '#666',
-    marginTop: 8,
-  },
-});

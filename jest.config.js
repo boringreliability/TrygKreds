@@ -9,6 +9,8 @@ const config = {
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
+    '^expo-location$': '<rootDir>/tests/mocks/expo-location.ts',
+    '^react-native-maps$': '<rootDir>/tests/mocks/react-native-maps.tsx',
   },
   collectCoverageFrom: [
     'src/**/*.{ts,tsx}',
