@@ -54,8 +54,11 @@ export function JoinGroupScreen({ onSuccess, onCancel }: JoinGroupScreenProps) {
       } else {
         setError(result.error || 'Failed to join group');
       }
-    } catch {
-      setError('An unexpected error occurred');
+    } catch (err) {
+      console.error('Error joining group:', err);
+      setError(
+        err instanceof Error ? err.message : 'An unexpected error occurred'
+      );
     } finally {
       setIsLoading(false);
     }
@@ -82,6 +85,8 @@ export function JoinGroupScreen({ onSuccess, onCancel }: JoinGroupScreenProps) {
             autoCapitalize="characters"
             autoCorrect={false}
             maxLength={20}
+            accessibilityLabel="Invite code"
+            accessibilityHint="Enter the invite code shared by a group member"
           />
 
           {error && <Text style={styles.error}>{error}</Text>}
@@ -90,6 +95,10 @@ export function JoinGroupScreen({ onSuccess, onCancel }: JoinGroupScreenProps) {
             style={[styles.button, isLoading && styles.buttonDisabled]}
             onPress={handleJoin}
             disabled={isLoading}
+            accessibilityLabel={isLoading ? 'Joining group' : 'Join Group'}
+            accessibilityHint="Joins the group using the entered invite code"
+            accessibilityRole="button"
+            accessibilityState={{ disabled: isLoading, busy: isLoading }}
           >
             {isLoading ? (
               <ActivityIndicator
@@ -106,6 +115,10 @@ export function JoinGroupScreen({ onSuccess, onCancel }: JoinGroupScreenProps) {
             style={styles.cancelButton}
             onPress={onCancel}
             disabled={isLoading}
+            accessibilityLabel="Cancel"
+            accessibilityHint="Returns to the previous screen without joining a group"
+            accessibilityRole="button"
+            accessibilityState={{ disabled: isLoading }}
           >
             <Text style={styles.cancelButtonText}>Cancel</Text>
           </TouchableOpacity>

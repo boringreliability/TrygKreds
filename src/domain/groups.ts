@@ -185,19 +185,20 @@ export async function leaveGroup(
   return { success: true };
 }
 
-// Get all groups for a user
+// Get all groups for a user (uses groups_with_member_count view for efficiency)
 export async function getMyGroups(userId: string): Promise<GroupsListResult> {
   const { data, error } = await supabase
     .from('group_members')
     .select(
       `
       role,
-      group:groups (
+      group:groups_with_member_count (
         id,
         name,
         owner_id,
         invite_code,
-        created_at
+        created_at,
+        member_count
       )
     `
     )
@@ -215,6 +216,7 @@ export async function getMyGroups(userId: string): Promise<GroupsListResult> {
       owner_id: string;
       invite_code: string;
       created_at: string;
+      member_count: number;
     } | null;
   }
 

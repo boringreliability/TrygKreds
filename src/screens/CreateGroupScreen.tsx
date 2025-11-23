@@ -57,8 +57,11 @@ export function CreateGroupScreen({
       } else {
         setError(result.error || 'Failed to create group');
       }
-    } catch {
-      setError('An unexpected error occurred');
+    } catch (err) {
+      console.error('Error creating group:', err);
+      setError(
+        err instanceof Error ? err.message : 'An unexpected error occurred'
+      );
     } finally {
       setIsLoading(false);
     }
@@ -85,6 +88,8 @@ export function CreateGroupScreen({
             autoCapitalize="words"
             autoCorrect={false}
             maxLength={50}
+            accessibilityLabel="Group name"
+            accessibilityHint="Enter a name for your new group, such as Family or Friends"
           />
 
           {error && <Text style={styles.error}>{error}</Text>}
@@ -93,6 +98,10 @@ export function CreateGroupScreen({
             style={[styles.button, isLoading && styles.buttonDisabled]}
             onPress={handleCreate}
             disabled={isLoading}
+            accessibilityLabel={isLoading ? 'Creating group' : 'Create Group'}
+            accessibilityHint="Creates a new group with the entered name"
+            accessibilityRole="button"
+            accessibilityState={{ disabled: isLoading, busy: isLoading }}
           >
             {isLoading ? (
               <ActivityIndicator
@@ -109,6 +118,10 @@ export function CreateGroupScreen({
             style={styles.cancelButton}
             onPress={onCancel}
             disabled={isLoading}
+            accessibilityLabel="Cancel"
+            accessibilityHint="Returns to the previous screen without creating a group"
+            accessibilityRole="button"
+            accessibilityState={{ disabled: isLoading }}
           >
             <Text style={styles.cancelButtonText}>Cancel</Text>
           </TouchableOpacity>
