@@ -4,3 +4,4 @@ export { CreateGroupScreen } from './CreateGroupScreen';
 export { JoinGroupScreen } from './JoinGroupScreen';
 export { GroupMapScreen } from './GroupMapScreen';
 export { ProfileScreen } from './ProfileScreen';
+export { PrivacyScreen } from './PrivacyScreen';

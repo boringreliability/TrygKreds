@@ -20,8 +20,6 @@ import { useAuth } from '../hooks/useAuth';
 import {
   getGroupMemberLocations,
   getLocationSharingStatus,
-  enableLocationSharing,
-  disableLocationSharing,
   updateMyLocation,
   type MemberLocation,
 } from '../domain/location';
@@ -31,11 +29,7 @@ import {
   getCurrentLocation,
   getForegroundPermissionStatus,
 } from '../services/location';
-import {
-  startBackgroundLocationUpdates,
-  stopBackgroundLocationUpdates,
-} from '../services/backgroundLocation';
-import { getMySharingGroupIds } from '../domain/location';
+import { startSharing, stopSharing } from '../services/sharingControl';
 import { SosButton } from '../components/SosButton';
 
 interface GroupMapScreenProps {
@@ -125,37 +119,25 @@ export function GroupMapScreen({
           }
         }
 
-        // Enable sharing in database
-        const enableResult = await enableLocationSharing(user.id, groupId);
+        // Ward 6: one place owns "enable, send a position, start the background
+        // task". The privacy screen calls the same function.
+        const enableResult = await startSharing(user.id, groupId);
         if (!enableResult.success) {
           Alert.alert('Error', enableResult.error || 'Failed to enable sharing');
           setIsTogglingSharing(false);
           return;
         }
 
-        // Get and send current location
-        const locationResult = await getCurrentLocation();
-        if (locationResult.success && locationResult.coordinates) {
-          await updateMyLocation(user.id, groupId, locationResult.coordinates);
-        }
-
-        // Ward 4: keep the position fresh while the app is backgrounded. A
-        // refused background permission is not a failure of sharing -- foreground
-        // sharing still works -- so it is not surfaced as an error.
-        await startBackgroundLocationUpdates();
-
         setIsSharingEnabled(true);
       } else {
-        // Disabling sharing. disableLocationSharing also deletes the stored
-        // position -- the screen does not have to remember to, and no caller
-        // can forget.
-        await disableLocationSharing(user.id, groupId);
-
-        // Only stop the background task once nothing is being shared anywhere.
-        // Sharing is per group, and the task serves all of them.
-        const remaining = await getMySharingGroupIds(user.id);
-        if (remaining.success && remaining.groupIds?.length === 0) {
-          await stopBackgroundLocationUpdates();
+        // stopSharing deletes the stored position and stops the background task
+        // only once nothing is shared anywhere. The screen does not have to
+        // remember either rule.
+        const stopResult = await stopSharing(user.id, groupId);
+        if (!stopResult.success) {
+          Alert.alert('Error', stopResult.error || 'Failed to stop sharing');
+          setIsTogglingSharing(false);
+          return;
         }
 
         setIsSharingEnabled(false);

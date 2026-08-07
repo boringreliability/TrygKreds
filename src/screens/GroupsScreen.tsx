@@ -22,6 +22,7 @@ interface GroupsScreenProps {
   onCreateGroup?: () => void;
   onJoinGroup?: () => void;
   onEditProfile?: () => void;
+  onOpenPrivacy?: () => void;
   onSelectGroup?: (group: GroupWithRole) => void;
 }
 
@@ -29,6 +30,7 @@ export function GroupsScreen({
   onCreateGroup,
   onJoinGroup,
   onEditProfile,
+  onOpenPrivacy,
   onSelectGroup,
 }: GroupsScreenProps) {
   const { user, signOut } = useAuth();
@@ -141,6 +143,14 @@ export function GroupsScreen({
           onPress={onEditProfile}
         >
           <Text style={styles.footerLink}>Display name</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          testID="open-privacy-button"
+          style={styles.signOutButton}
+          onPress={onOpenPrivacy}
+        >
+          <Text style={styles.footerLink}>Privacy</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.signOutButton} onPress={signOut}>

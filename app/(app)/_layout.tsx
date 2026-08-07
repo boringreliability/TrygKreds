@@ -35,6 +35,13 @@ export default function AppLayout() {
         }}
       />
       <Stack.Screen
+        name="privacy"
+        options={{
+          title: 'Privacy',
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
         name="group/[id]"
         options={{
           title: 'Group',

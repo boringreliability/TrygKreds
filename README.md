@@ -14,7 +14,9 @@ specific, and it lists the limitations too.
 - **Location sharing**: Share last known location with group members, kept up to
   date in the background while sharing is on
 - **SOS (panic button)**: Alert all group members in emergencies
-- **Privacy controls**: Pause sharing, see who can view your location
+- **Privacy controls**: See exactly who can view your location, pause sharing per
+  group or for everyone at once. Pausing deletes the stored position rather than
+  hiding it
 
 ## Tech Stack
 

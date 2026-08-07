@@ -204,23 +204,26 @@ Asserted in `supabase/tests/05_sos_test.sql`.
 Writing a promise down is not enforcement. These run in CI on every pull
 request, and fail the build rather than warn:
 
-| Guarantee                                        | Enforced by                                           |
-| ------------------------------------------------ | ----------------------------------------------------- |
-| No unapproved runtime dependency                 | `scripts/check-dependencies.js` -- explicit allowlist |
-| No network access outside your Supabase instance | `scripts/check-network-access.js`                     |
-| Locations are unreadable across group boundaries | `supabase/tests/02_rls_test.sql`                      |
-| Locations are unreadable once sharing is off     | `supabase/tests/02_rls_test.sql`                      |
-| Views do not bypass row level security           | `supabase/tests/02_rls_test.sql`                      |
-| Profiles are visible only within shared groups   | `supabase/tests/03_profiles_test.sql`                 |
-| Profiles hold no email address                   | `supabase/tests/03_profiles_test.sql`                 |
-| Turning sharing off deletes the position         | `src/domain/location.test.ts`                         |
-| Background updates cannot accumulate a history   | `supabase/tests/04_no_history_test.sql`               |
-| No table looks like a location history           | `supabase/tests/04_no_history_test.sql`               |
-| Background work stops when signed out            | `src/domain/backgroundLocationSync.test.ts`           |
-| SOS events are visible only inside the group     | `supabase/tests/05_sos_test.sql`                      |
-| An SOS cannot be forged or edited                | `supabase/tests/05_sos_test.sql`                      |
-| Push tokens are unreadable, even by their owner  | `supabase/tests/05_sos_test.sql`                      |
-| SOS notifications carry no coordinates           | `src/domain/sos.test.ts`, `supabase/functions/*.test` |
+| Guarantee                                           | Enforced by                                           |
+| --------------------------------------------------- | ----------------------------------------------------- |
+| No unapproved runtime dependency                    | `scripts/check-dependencies.js` -- explicit allowlist |
+| No network access outside your Supabase instance    | `scripts/check-network-access.js`                     |
+| Locations are unreadable across group boundaries    | `supabase/tests/02_rls_test.sql`                      |
+| Locations are unreadable once sharing is off        | `supabase/tests/02_rls_test.sql`                      |
+| Views do not bypass row level security              | `supabase/tests/02_rls_test.sql`                      |
+| Profiles are visible only within shared groups      | `supabase/tests/03_profiles_test.sql`                 |
+| Profiles hold no email address                      | `supabase/tests/03_profiles_test.sql`                 |
+| Turning sharing off deletes the position            | `src/domain/location.test.ts`                         |
+| Background updates cannot accumulate a history      | `supabase/tests/04_no_history_test.sql`               |
+| No table looks like a location history              | `supabase/tests/04_no_history_test.sql`               |
+| Background work stops when signed out               | `src/domain/backgroundLocationSync.test.ts`           |
+| SOS events are visible only inside the group        | `supabase/tests/05_sos_test.sql`                      |
+| An SOS cannot be forged or edited                   | `supabase/tests/05_sos_test.sql`                      |
+| Push tokens are unreadable, even by their owner     | `supabase/tests/05_sos_test.sql`                      |
+| SOS notifications carry no coordinates              | `src/domain/sos.test.ts`, `supabase/functions/*.test` |
+| Pausing deletes the position, per group and for all | `src/domain/privacy.test.ts`                          |
+| A failed pause is never reported as success         | `src/domain/privacy.test.ts`                          |
+| Nobody is listed as able to see themselves          | `src/domain/privacy.test.ts`                          |
 
 The row level security tests run against a real PostgreSQL instance, not against
 mocks. This matters: the application test suite mocks Supabase entirely, so it
@@ -269,6 +272,17 @@ Things this document will not pretend about.
   improvement and is not implemented.
 - **Not audited.** These are the guarantees the code makes and the tests check.
   No external party has reviewed them.
+
+## Seeing and controlling this yourself
+
+The app has a Privacy screen (Groups -> Privacy) that shows, per group, whether
+you are sharing and exactly which people can currently see your location. It also
+offers a single action to stop sharing with everyone at once.
+
+It deliberately has **no "resume everything"** button. Restoring a remembered set
+of groups could switch sharing back on for a group you had turned off on purpose,
+and a privacy control must never turn sharing ON by inference. Resuming is always
+an explicit, per-group choice.
 
 ## Deleting your data
 
