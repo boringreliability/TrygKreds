@@ -4,7 +4,7 @@
  * Handles user sign in and sign up.
  */
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   View,
   Text,

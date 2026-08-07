@@ -5,7 +5,6 @@
  * Scenario: Join a group via invite code
  */
 
-import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import { JoinGroupScreen } from './JoinGroupScreen';
 import * as groups from '../domain/groups';

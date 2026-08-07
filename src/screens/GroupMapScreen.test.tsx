@@ -5,7 +5,6 @@
  * Tests for viewing member locations on a map
  */
 
-import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import { GroupMapScreen } from './GroupMapScreen';
 import * as location from '../domain/location';

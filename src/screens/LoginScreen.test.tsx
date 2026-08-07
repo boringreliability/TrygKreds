@@ -5,7 +5,6 @@
  * Scenario: User signs in/up with email and password
  */
 
-import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import { LoginScreen } from './LoginScreen';
 import * as auth from '../domain/auth';

@@ -4,7 +4,7 @@
  * Displays the user's groups and options to create/join groups.
  */
 
-import React, { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,

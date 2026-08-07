@@ -5,7 +5,6 @@
  * Scenario: User sees list of groups or empty state
  */
 
-import React from 'react';
 import { render, waitFor } from '@testing-library/react-native';
 import { GroupsScreen } from './GroupsScreen';
 import * as groups from '../domain/groups';

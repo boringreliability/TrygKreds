@@ -4,7 +4,7 @@
  * Displays group member locations on a map with location sharing controls.
  */
 
-import React, { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,

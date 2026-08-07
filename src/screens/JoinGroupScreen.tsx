@@ -4,7 +4,7 @@
  * Allows users to join a group via invite code.
  */
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   View,
   Text,

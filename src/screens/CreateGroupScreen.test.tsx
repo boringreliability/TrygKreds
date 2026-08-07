@@ -5,7 +5,6 @@
  * Scenario: Create a new group
  */
 
-import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import { CreateGroupScreen } from './CreateGroupScreen';
 import * as groups from '../domain/groups';

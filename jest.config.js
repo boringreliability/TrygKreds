@@ -2,10 +2,14 @@
 const config = {
   preset: 'jest-expo',
   testEnvironment: 'node',
-  setupFilesAfterEnv: ['@testing-library/jest-native/extend-expect'],
-  transformIgnorePatterns: [
-    'node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@sentry/react-native|native-base|react-native-svg)',
-  ],
+  // `transformIgnorePatterns` is deliberately NOT overridden here. The jest-expo
+  // preset maintains the correct list for the installed SDK, including the
+  // exclusions for react-native-reanimated/plugin and @react-native/babel-preset
+  // which must not be transformed. Overriding it silently drops those.
+  //
+  // Jest matchers (toHaveTextContent, toBeOnTheScreen, ...) are registered
+  // automatically by @testing-library/react-native v13+, so the deprecated
+  // @testing-library/jest-native extend-expect setup file is no longer needed.
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
