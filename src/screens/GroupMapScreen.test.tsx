@@ -304,4 +304,93 @@ describe('GroupMapScreen', () => {
       });
     });
   });
+  // Ward 3.3: before profiles existed, every marker and list row read "Member".
+  // These assertions use the real formatMemberName/memberInitial helpers --
+  // only the location domain is mocked.
+  describe('Display names', () => {
+    const locationFor = (
+      id: string,
+      userId: string,
+      displayName: string | null
+    ) => ({
+      id,
+      userId,
+      groupId: 'group-123',
+      latitude: 55.6761,
+      longitude: 12.5683,
+      accuracy: 10,
+      updatedAt: new Date().toISOString(),
+      displayName,
+    });
+
+    it('should label members by their display name', async () => {
+      mockLocation.getGroupMemberLocations.mockResolvedValue({
+        success: true,
+        locations: [
+          locationFor('loc-1', 'user-1', 'Mor'),
+          locationFor('loc-2', 'user-2', 'Far'),
+        ],
+      });
+
+      const { getAllByText } = render(<GroupMapScreen {...defaultProps} />);
+
+      await waitFor(() => {
+        // Once on the marker, once in the "Last seen" list.
+        expect(getAllByText('Mor').length).toBeGreaterThan(0);
+        expect(getAllByText('Far').length).toBeGreaterThan(0);
+      });
+    });
+
+    it('should label my own marker as You', async () => {
+      mockLocation.getGroupMemberLocations.mockResolvedValue({
+        success: true,
+        locations: [locationFor('loc-1', mockUser.id, 'Mette')],
+      });
+
+      const { getAllByText, queryByText } = render(
+        <GroupMapScreen {...defaultProps} />
+      );
+
+      await waitFor(() => {
+        expect(getAllByText('You').length).toBeGreaterThan(0);
+      });
+      expect(queryByText('Mette')).toBeNull();
+    });
+
+    it('should show a neutral placeholder for a member with no display name', async () => {
+      mockLocation.getGroupMemberLocations.mockResolvedValue({
+        success: true,
+        locations: [locationFor('loc-1', 'user-1', null)],
+      });
+
+      const { getAllByText } = render(<GroupMapScreen {...defaultProps} />);
+
+      await waitFor(() => {
+        expect(getAllByText('Unknown member').length).toBeGreaterThan(0);
+      });
+    });
+
+    it('should never render a raw user id', async () => {
+      mockLocation.getGroupMemberLocations.mockResolvedValue({
+        success: true,
+        locations: [
+          locationFor('loc-1', 'user-1', null),
+          locationFor('loc-2', 'user-2', 'Far'),
+        ],
+      });
+
+      const { getAllByText, queryAllByText } = render(
+        <GroupMapScreen {...defaultProps} />
+      );
+
+      // "Far" appears twice (marker + list row), hence the All variants here.
+      await waitFor(() => {
+        expect(getAllByText('Far').length).toBeGreaterThan(0);
+      });
+      expect(queryAllByText('user-1')).toHaveLength(0);
+      expect(queryAllByText('user-2')).toHaveLength(0);
+      // Nor the old generic label.
+      expect(queryAllByText('Member')).toHaveLength(0);
+    });
+  });
 });

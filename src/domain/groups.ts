@@ -6,6 +6,7 @@
  */
 
 import { supabase } from '../services/supabase';
+import { getProfilesForUsers } from './profiles';
 
 // Types
 export interface Group {
@@ -23,6 +24,11 @@ export interface GroupMember {
   userId: string;
   role: 'owner' | 'member';
   joinedAt: string;
+  /**
+   * The member's chosen display name, or null when they have not set one.
+   * Use formatMemberName() to render it -- never fall back to userId.
+   */
+  displayName?: string | null;
 }
 
 export interface GroupWithRole extends Group {
@@ -295,6 +301,19 @@ export async function getGroupMembers(
     role: row.role,
     joinedAt: row.joined_at,
   }));
+
+  // Attach display names. As on the map, a failed name lookup degrades to
+  // unnamed members rather than an empty list.
+  const profilesResult = await getProfilesForUsers(
+    members.map((member) => member.userId)
+  );
+
+  if (profilesResult.success && profilesResult.profiles) {
+    const profiles = profilesResult.profiles;
+    for (const member of members) {
+      member.displayName = profiles[member.userId]?.displayName ?? null;
+    }
+  }
 
   return { success: true, members };
 }

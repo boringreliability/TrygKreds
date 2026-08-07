@@ -79,10 +79,24 @@ run_suite() {
     "${migrations[@]}" \
     "$TESTS_DIR/01_test_helpers.sql"
 
-  log "running RLS assertions"
-  # The assertion output arrives as INFO/WARNING notices; show them.
-  PGOPTIONS='--client-min-messages=info' \
-    psql "${PSQL_FLAGS[@]}" "$uri" --file "$TESTS_DIR/02_rls_test.sql"
+  # Every *_test.sql file, in order. Each wraps itself in BEGIN/ROLLBACK, so the
+  # files are independent and leave no fixture behind for the next one.
+  local suites=()
+  while IFS= read -r s; do suites+=("$s"); done \
+    < <(find "$TESTS_DIR" -name '*_test.sql' | sort)
+
+  if [ ${#suites[@]} -eq 0 ]; then
+    echo "No test files found in $TESTS_DIR" >&2
+    return 1
+  fi
+
+  local suite
+  for suite in "${suites[@]}"; do
+    log "running $(basename "$suite")"
+    # The assertion output arrives as INFO/WARNING notices; show them.
+    PGOPTIONS='--client-min-messages=info' \
+      psql "${PSQL_FLAGS[@]}" "$uri" --file "$suite"
+  done
 }
 
 # ---------------------------------------------------------------------------

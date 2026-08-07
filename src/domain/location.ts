@@ -6,6 +6,7 @@
  */
 
 import { supabase } from '../services/supabase';
+import { getProfilesForUsers } from './profiles';
 
 // Types
 export interface LocationCoordinates {
@@ -22,6 +23,12 @@ export interface MemberLocation {
   longitude: number;
   accuracy: number;
   updatedAt: string;
+  /**
+   * The member's chosen display name, or null when they have not set one or
+   * their profile is not visible to the caller. Use formatMemberName() to turn
+   * this into something to show a human -- never fall back to userId.
+   */
+  displayName?: string | null;
 }
 
 export interface LocationSharingStatus {
@@ -139,6 +146,20 @@ export async function getGroupMemberLocations(
   }
 
   const locations: MemberLocation[] = (data || []).map(mapSupabaseLocation);
+
+  // Attach display names so the map can label markers with names rather than
+  // ids. A failure here degrades to unnamed markers on purpose: not knowing
+  // what to call someone is no reason to drop them off the map.
+  const profilesResult = await getProfilesForUsers(
+    locations.map((location) => location.userId)
+  );
+
+  if (profilesResult.success && profilesResult.profiles) {
+    const profiles = profilesResult.profiles;
+    for (const location of locations) {
+      location.displayName = profiles[location.userId]?.displayName ?? null;
+    }
+  }
 
   return { success: true, locations };
 }

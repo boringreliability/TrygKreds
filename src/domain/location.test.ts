@@ -107,33 +107,48 @@ describe('Location Domain', () => {
   describe('getGroupMemberLocations', () => {
     const mockGroupId = 'group-123';
 
-    it('should return locations for group members', async () => {
-      const mockLocations = [
-        {
-          id: 'loc-1',
-          user_id: 'user-1',
-          group_id: mockGroupId,
-          latitude: 55.6761,
-          longitude: 12.5683,
-          accuracy: 10,
-          updated_at: new Date().toISOString(),
-        },
-        {
-          id: 'loc-2',
-          user_id: 'user-2',
-          group_id: mockGroupId,
-          latitude: 55.6762,
-          longitude: 12.5684,
-          accuracy: 15,
-          updated_at: new Date().toISOString(),
-        },
-      ];
+    // getGroupMemberLocations makes two calls: the locations, then the display
+    // names for the users those locations belong to. Route them by table so the
+    // tests do not depend on call order.
+    const mockTables = (
+      locationRows: unknown,
+      locationError: unknown,
+      profileRows: unknown = [],
+      profileError: unknown = null
+    ) => {
+      mockSupabaseFrom.mockImplementation((table: string) => {
+        if (table === 'profiles') {
+          return {
+            select: jest.fn().mockReturnThis(),
+            in: jest
+              .fn()
+              .mockResolvedValue({ data: profileRows, error: profileError }),
+          };
+        }
+        return {
+          select: jest.fn().mockReturnThis(),
+          eq: jest
+            .fn()
+            .mockResolvedValue({ data: locationRows, error: locationError }),
+        };
+      });
+    };
 
-      const selectMock = {
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockResolvedValue({ data: mockLocations, error: null }),
-      };
-      mockSupabaseFrom.mockReturnValue(selectMock);
+    const locationRow = (id: string, userId: string, latitude: number) => ({
+      id,
+      user_id: userId,
+      group_id: mockGroupId,
+      latitude,
+      longitude: 12.5683,
+      accuracy: 10,
+      updated_at: new Date().toISOString(),
+    });
+
+    it('should return locations for group members', async () => {
+      mockTables(
+        [locationRow('loc-1', 'user-1', 55.6761), locationRow('loc-2', 'user-2', 55.6762)],
+        null
+      );
 
       const result = await getGroupMemberLocations(mockGroupId);
 
@@ -143,11 +158,7 @@ describe('Location Domain', () => {
     });
 
     it('should return empty array when no locations', async () => {
-      const selectMock = {
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockResolvedValue({ data: [], error: null }),
-      };
-      mockSupabaseFrom.mockReturnValue(selectMock);
+      mockTables([], null);
 
       const result = await getGroupMemberLocations(mockGroupId);
 
@@ -156,16 +167,61 @@ describe('Location Domain', () => {
     });
 
     it('should handle database error', async () => {
-      const selectMock = {
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockResolvedValue({ data: null, error: { message: 'Database error' } }),
-      };
-      mockSupabaseFrom.mockReturnValue(selectMock);
+      mockTables(null, { message: 'Database error' });
 
       const result = await getGroupMemberLocations(mockGroupId);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('Database error');
+    });
+
+    // Ward 3.3: markers must be labelled with names, not user ids.
+    it('should attach display names to each location', async () => {
+      mockTables(
+        [locationRow('loc-1', 'user-1', 55.6761), locationRow('loc-2', 'user-2', 55.6762)],
+        null,
+        [
+          { id: 'user-1', display_name: 'Mor' },
+          { id: 'user-2', display_name: 'Far' },
+        ]
+      );
+
+      const result = await getGroupMemberLocations(mockGroupId);
+
+      expect(result.locations?.[0].displayName).toBe('Mor');
+      expect(result.locations?.[1].displayName).toBe('Far');
+    });
+
+    it('should use null for a member who has not set a display name', async () => {
+      mockTables([locationRow('loc-1', 'user-1', 55.6761)], null, [
+        { id: 'user-1', display_name: null },
+      ]);
+
+      const result = await getGroupMemberLocations(mockGroupId);
+
+      expect(result.locations?.[0].displayName).toBeNull();
+    });
+
+    it('should use null when a profile is not visible to the caller', async () => {
+      // RLS returns no row for a profile the caller may not read.
+      mockTables([locationRow('loc-1', 'user-1', 55.6761)], null, []);
+
+      const result = await getGroupMemberLocations(mockGroupId);
+
+      expect(result.locations?.[0].displayName).toBeNull();
+    });
+
+    it('should still return locations when the profile lookup fails', async () => {
+      // Not knowing what to call someone is no reason to drop them off the map.
+      mockTables([locationRow('loc-1', 'user-1', 55.6761)], null, null, {
+        message: 'profiles unavailable',
+      });
+
+      const result = await getGroupMemberLocations(mockGroupId);
+
+      expect(result.success).toBe(true);
+      expect(result.locations).toHaveLength(1);
+      expect(result.locations?.[0].displayName).toBeUndefined();
     });
   });
 

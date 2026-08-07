@@ -26,6 +26,7 @@ import {
   removeMyLocation,
   type MemberLocation,
 } from '../domain/location';
+import { formatMemberName, memberInitial } from '../domain/profiles';
 import {
   requestForegroundPermission,
   getCurrentLocation,
@@ -218,7 +219,10 @@ export function GroupMapScreen({
                 latitude: location.latitude,
                 longitude: location.longitude,
               }}
-              title={location.userId === user?.id ? 'You' : 'Member'}
+              title={formatMemberName(
+                location.displayName,
+                location.userId === user?.id
+              )}
               description={`Last seen: ${formatLastSeen(location.updatedAt)}`}
             />
           ))}
@@ -271,12 +275,18 @@ export function GroupMapScreen({
             <View key={location.id} style={styles.memberItem}>
               <View style={styles.memberAvatar}>
                 <Text style={styles.memberAvatarText}>
-                  {location.userId === user?.id ? 'Y' : 'M'}
+                  {memberInitial(
+                    location.displayName,
+                    location.userId === user?.id
+                  )}
                 </Text>
               </View>
               <View style={styles.memberInfo}>
                 <Text style={styles.memberName}>
-                  {location.userId === user?.id ? 'You' : 'Member'}
+                  {formatMemberName(
+                    location.displayName,
+                    location.userId === user?.id
+                  )}
                 </Text>
                 <Text style={styles.memberLastSeen}>
                   Last seen: {formatLastSeen(location.updatedAt)}

@@ -10,6 +10,7 @@ import {
   joinGroup,
   leaveGroup,
   getMyGroups,
+  getGroupMembers,
   rotateInviteCode,
   validateGroupName,
   type Group,
@@ -140,9 +141,12 @@ describe('Groups Domain', () => {
 
       expect(result.success).toBe(true);
       expect(result.groupId).toBe('group-123');
-      expect(mockSupabaseRpc).toHaveBeenCalledWith('join_group_by_invite_code', {
-        p_invite_code: 'ABC1234567',
-      });
+      expect(mockSupabaseRpc).toHaveBeenCalledWith(
+        'join_group_by_invite_code',
+        {
+          p_invite_code: 'ABC1234567',
+        }
+      );
     });
 
     it('should normalise the invite code before sending it', async () => {
@@ -150,9 +154,12 @@ describe('Groups Domain', () => {
 
       await joinGroup('  abc1234567  ');
 
-      expect(mockSupabaseRpc).toHaveBeenCalledWith('join_group_by_invite_code', {
-        p_invite_code: 'ABC1234567',
-      });
+      expect(mockSupabaseRpc).toHaveBeenCalledWith(
+        'join_group_by_invite_code',
+        {
+          p_invite_code: 'ABC1234567',
+        }
+      );
     });
 
     it('should never write to group_members directly', async () => {
@@ -281,6 +288,89 @@ describe('Groups Domain', () => {
     });
   });
 
+  // Ward 3.3: members carry display names so lists can show people, not ids.
+  describe('getGroupMembers', () => {
+    const mockGroupId = 'group-123';
+
+    // Two calls: the membership rows, then display names for those users.
+    const mockTables = (
+      memberRows: unknown,
+      memberError: unknown,
+      profileRows: unknown = [],
+      profileError: unknown = null
+    ) => {
+      mockSupabaseFrom.mockImplementation((table: string) => {
+        if (table === 'profiles') {
+          return {
+            select: jest.fn().mockReturnThis(),
+            in: jest
+              .fn()
+              .mockResolvedValue({ data: profileRows, error: profileError }),
+          };
+        }
+        return {
+          select: jest.fn().mockReturnThis(),
+          eq: jest
+            .fn()
+            .mockResolvedValue({ data: memberRows, error: memberError }),
+        };
+      });
+    };
+
+    const memberRow = (id: string, userId: string, role: string) => ({
+      id,
+      group_id: mockGroupId,
+      user_id: userId,
+      role,
+      joined_at: new Date().toISOString(),
+    });
+
+    it('should return the members of a group', async () => {
+      mockTables(
+        [
+          memberRow('m-1', 'user-1', 'owner'),
+          memberRow('m-2', 'user-2', 'member'),
+        ],
+        null
+      );
+
+      const result = await getGroupMembers(mockGroupId);
+
+      expect(result.success).toBe(true);
+      expect(result.members).toHaveLength(2);
+      expect(result.members?.[0].role).toBe('owner');
+    });
+
+    it('should attach display names', async () => {
+      mockTables([memberRow('m-1', 'user-1', 'owner')], null, [
+        { id: 'user-1', display_name: 'Mor' },
+      ]);
+
+      const result = await getGroupMembers(mockGroupId);
+
+      expect(result.members?.[0].displayName).toBe('Mor');
+    });
+
+    it('should use null when a member has no display name', async () => {
+      mockTables([memberRow('m-1', 'user-1', 'owner')], null, [
+        { id: 'user-1', display_name: null },
+      ]);
+
+      const result = await getGroupMembers(mockGroupId);
+
+      expect(result.members?.[0].displayName).toBeNull();
+    });
+
+    it('should handle a database error', async () => {
+      mockTables(null, { message: 'Database error' });
+
+      const result = await getGroupMembers(mockGroupId);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Database error');
+    });
+  });
+
   // Ward 3.2: rotation replaces the code, clears any revocation and starts a
   // fresh expiry window. All three happen in one server-side function so they
   // cannot drift apart.
@@ -319,7 +409,9 @@ describe('Groups Domain', () => {
       const result = await rotateInviteCode('group-123');
 
       expect(result.success).toBe(false);
-      expect(result.error).toBe('Only the group owner can rotate the invite code');
+      expect(result.error).toBe(
+        'Only the group owner can rotate the invite code'
+      );
     });
   });
 });
