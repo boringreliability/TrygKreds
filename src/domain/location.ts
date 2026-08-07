@@ -192,6 +192,15 @@ export async function enableLocationSharing(
 }
 
 // Disable location sharing for a group
+/**
+ * Turn off location sharing for a group and delete the stored position.
+ *
+ * The deletion is part of this function, not of the screen that calls it. A
+ * position that merely sits behind an RLS policy is still a position sitting in
+ * the database, and "turning sharing off deletes it" is a promise PRIVACY.md
+ * makes. Enforcing it here means every caller keeps that promise -- including
+ * the background task and the privacy screen still to come.
+ */
 export async function disableLocationSharing(
   userId: string,
   groupId: string
@@ -215,7 +224,11 @@ export async function disableLocationSharing(
     return { success: false, error: error.message };
   }
 
-  return { success: true };
+  // Sharing is already off at this point, so the position is hidden either way.
+  // Report a failure to erase it anyway rather than swallowing it: the user
+  // asked for it gone, and silently leaving it behind would be the one outcome
+  // they must not be told is a success.
+  return removeMyLocation(userId, groupId);
 }
 
 // Get location sharing status for a user in a group

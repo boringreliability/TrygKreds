@@ -256,9 +256,8 @@ describe('GroupMapScreen', () => {
       });
     });
 
-    it('should disable sharing and remove location', async () => {
+    it('should disable sharing, which also deletes the stored position', async () => {
       mockLocation.disableLocationSharing.mockResolvedValue({ success: true });
-      mockLocation.removeMyLocation.mockResolvedValue({ success: true });
 
       const { getByTestId } = render(<GroupMapScreen {...defaultProps} />);
 
@@ -272,11 +271,11 @@ describe('GroupMapScreen', () => {
           mockUser.id,
           'group-123'
         );
-        expect(mockLocation.removeMyLocation).toHaveBeenCalledWith(
-          mockUser.id,
-          'group-123'
-        );
       });
+
+      // Deleting the position is disableLocationSharing's job now, so the
+      // screen must NOT need a second call to get it right.
+      expect(mockLocation.removeMyLocation).not.toHaveBeenCalled();
     });
   });
 

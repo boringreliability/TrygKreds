@@ -20,6 +20,15 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
+      # The privacy guards run before install: they read package.json and our own
+      # source, need no node_modules, and a rejected dependency should be
+      # reported rather than downloaded first. They fail the build, not warn.
+      - name: Check privacy contract (dependency allowlist)
+        run: npm run check:dependencies
+
+      - name: Check privacy contract (network access)
+        run: npm run check:network
+
       - name: Install dependencies
         run: npm ci
 

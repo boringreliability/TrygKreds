@@ -4,6 +4,10 @@ A privacy-friendly, open-source alternative to Life360.
 
 Built with **BDD + GS-TDD (test-first)** methodology as a showcase project.
 
+**[Read the privacy contract](PRIVACY.md)** -- what is stored, for how long, who
+can read it, and which check enforces each guarantee. It is deliberately
+specific, and it lists the limitations too.
+
 ## Features (MVP)
 
 - **Groups ("circles")**: Create and join groups via invite code
@@ -72,6 +76,25 @@ Requires PostgreSQL 15+ server binaries (`initdb`/`pg_ctl`) -- the views rely on
 ```bash
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres npm run test:rls
 ```
+
+#### Privacy guards
+
+The guarantees in [PRIVACY.md](PRIVACY.md) are enforced mechanically, and fail
+the build rather than warn:
+
+```bash
+npm run check:privacy
+```
+
+- `check:dependencies` -- every runtime dependency must be on an explicit
+  allowlist in `scripts/check-dependencies.js`, with a reason and its network
+  behaviour. Adding a package means editing that list on purpose, in a diff a
+  reviewer can see. Anything that reaches a third party must also be disclosed in
+  PRIVACY.md.
+- `check:network` -- no `fetch`, `XMLHttpRequest`, `WebSocket` or `sendBeacon` in
+  our own source, and no absolute URL outside a very short host allowlist. All
+  traffic goes through the Supabase client, configured from
+  `EXPO_PUBLIC_SUPABASE_URL`.
 
 ### Linting & Formatting
 

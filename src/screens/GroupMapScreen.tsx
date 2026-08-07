@@ -23,7 +23,6 @@ import {
   enableLocationSharing,
   disableLocationSharing,
   updateMyLocation,
-  removeMyLocation,
   type MemberLocation,
 } from '../domain/location';
 import { formatMemberName, memberInitial } from '../domain/profiles';
@@ -136,9 +135,10 @@ export function GroupMapScreen({
 
         setIsSharingEnabled(true);
       } else {
-        // Disabling sharing
+        // Disabling sharing. disableLocationSharing also deletes the stored
+        // position -- the screen does not have to remember to, and no caller
+        // can forget.
         await disableLocationSharing(user.id, groupId);
-        await removeMyLocation(user.id, groupId);
         setIsSharingEnabled(false);
       }
 

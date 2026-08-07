@@ -265,22 +265,69 @@ describe('Location Domain', () => {
     const mockUserId = 'user-123';
     const mockGroupId = 'group-123';
 
-    it('should disable location sharing for a group', async () => {
-      const chainMock = createChainableMock({
-        data: {
-          id: 'sharing-123',
-          user_id: mockUserId,
-          group_id: mockGroupId,
-          sharing_enabled: false,
-        },
-        error: null,
+    // Turning sharing off must also erase the stored position. PRIVACY.md
+    // promises it, so the guarantee lives here rather than in a screen.
+    const mockTables = (settingsError: unknown, locationsError: unknown) => {
+      const calls: string[] = [];
+      mockSupabaseFrom.mockImplementation((table: string) => {
+        calls.push(table);
+        if (table === 'member_locations') {
+          return {
+            delete: jest.fn().mockReturnThis(),
+            eq: jest.fn().mockReturnThis(),
+            then: (resolve: (value: unknown) => void) =>
+              resolve({ data: null, error: locationsError }),
+          };
+        }
+        return {
+          upsert: jest.fn().mockReturnThis(),
+          select: jest.fn().mockReturnThis(),
+          single: jest
+            .fn()
+            .mockResolvedValue({ data: {}, error: settingsError }),
+        };
       });
-      mockSupabaseFrom.mockReturnValue(chainMock);
+      return calls;
+    };
+
+    it('should disable location sharing for a group', async () => {
+      const calls = mockTables(null, null);
 
       const result = await disableLocationSharing(mockUserId, mockGroupId);
 
       expect(result.success).toBe(true);
-      expect(mockSupabaseFrom).toHaveBeenCalledWith('location_sharing_settings');
+      expect(calls).toContain('location_sharing_settings');
+    });
+
+    it('should delete the stored position, not just hide it', async () => {
+      const calls = mockTables(null, null);
+
+      const result = await disableLocationSharing(mockUserId, mockGroupId);
+
+      expect(result.success).toBe(true);
+      expect(calls).toContain('member_locations');
+    });
+
+    it('should report a failure to delete the position', async () => {
+      // Sharing is already off, so the position is hidden either way -- but the
+      // user asked for it gone. Reporting success here would be the one wrong
+      // answer.
+      mockTables(null, { message: 'delete failed' });
+
+      const result = await disableLocationSharing(mockUserId, mockGroupId);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('delete failed');
+    });
+
+    it('should not attempt the delete if disabling sharing failed', async () => {
+      const calls = mockTables({ message: 'upsert failed' }, null);
+
+      const result = await disableLocationSharing(mockUserId, mockGroupId);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('upsert failed');
+      expect(calls).not.toContain('member_locations');
     });
   });
 
