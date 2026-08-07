@@ -17,8 +17,21 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          # 22+, not 20. @supabase/supabase-js declares engines >=22.0.0 and
+          # needs the global WebSocket that Node gained in 22 -- on 20 the client
+          # throws while being constructed, which happens at module load, so
+          # every suite importing it fails before a single test runs.
+          node-version: '22'
           cache: 'npm'
+
+      # The privacy guards run before install: they read package.json and our own
+      # source, need no node_modules, and a rejected dependency should be
+      # reported rather than downloaded first. They fail the build, not warn.
+      - name: Check privacy contract (dependency allowlist)
+        run: npm run check:dependencies
+
+      - name: Check privacy contract (network access)
+        run: npm run check:network
 
       - name: Install dependencies
         run: npm ci
@@ -38,3 +51,34 @@ jobs:
           name: coverage-report
           path: coverage/
           retention-days: 7
+
+  # RLS is database behaviour. The Jest suite mocks Supabase, so it would pass
+  # against a database with row level security switched off entirely. This job
+  # applies the real migrations to a real PostgreSQL and asserts the privacy
+  # guarantees against it.
+  rls-tests:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        # Must be 15 or newer: the migrations rely on views declared
+        # WITH (security_invoker = true).
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run RLS test suite
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+        run: npm run test:rls

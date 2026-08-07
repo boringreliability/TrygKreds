@@ -5,7 +5,6 @@
  * Scenario: Join a group via invite code
  */
 
-import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import { JoinGroupScreen } from './JoinGroupScreen';
 import * as groups from '../domain/groups';
@@ -47,14 +46,7 @@ describe('JoinGroupScreen', () => {
   it('should join group with valid invite code', async () => {
     mockGroups.joinGroup.mockResolvedValue({
       success: true,
-      group: {
-        id: 'group-123',
-        name: 'Family',
-        ownerId: 'other-user',
-        inviteCode: 'ABC123',
-        createdAt: new Date().toISOString(),
-        memberCount: 2,
-      },
+      groupId: 'group-123',
     });
 
     const { getByPlaceholderText, getAllByText } = render(
@@ -66,7 +58,7 @@ describe('JoinGroupScreen', () => {
     fireEvent.press(joinButtons[joinButtons.length - 1]);
 
     await waitFor(() => {
-      expect(mockGroups.joinGroup).toHaveBeenCalledWith('ABC123', mockUser.id);
+      expect(mockGroups.joinGroup).toHaveBeenCalledWith('ABC123');
       expect(mockOnSuccess).toHaveBeenCalled();
     });
   });
@@ -103,7 +95,9 @@ describe('JoinGroupScreen', () => {
     const joinButtons = getAllByText('Join Group');
     fireEvent.press(joinButtons[joinButtons.length - 1]);
 
-    expect(await findByText('You are already a member of this group')).toBeTruthy();
+    expect(
+      await findByText('You are already a member of this group')
+    ).toBeTruthy();
   });
 
   it('should show error for empty invite code', async () => {
@@ -131,14 +125,7 @@ describe('JoinGroupScreen', () => {
   it('should normalize invite code to uppercase', async () => {
     mockGroups.joinGroup.mockResolvedValue({
       success: true,
-      group: {
-        id: 'group-123',
-        name: 'Family',
-        ownerId: 'other-user',
-        inviteCode: 'ABC123',
-        createdAt: new Date().toISOString(),
-        memberCount: 2,
-      },
+      groupId: 'group-123',
     });
 
     const { getByPlaceholderText, getAllByText } = render(
@@ -150,7 +137,7 @@ describe('JoinGroupScreen', () => {
     fireEvent.press(joinButtons[joinButtons.length - 1]);
 
     await waitFor(() => {
-      expect(mockGroups.joinGroup).toHaveBeenCalledWith('ABC123', mockUser.id);
+      expect(mockGroups.joinGroup).toHaveBeenCalledWith('ABC123');
     });
   });
 });

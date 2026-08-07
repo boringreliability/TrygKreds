@@ -27,6 +27,21 @@ export default function AppLayout() {
         }}
       />
       <Stack.Screen
+        name="profile"
+        options={{
+          title: 'Display Name',
+          headerShown: false,
+          presentation: 'modal',
+        }}
+      />
+      <Stack.Screen
+        name="privacy"
+        options={{
+          title: 'Privacy',
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
         name="group/[id]"
         options={{
           title: 'Group',

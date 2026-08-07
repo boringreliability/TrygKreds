@@ -5,7 +5,6 @@
  * Scenario: User signs in/up with email and password
  */
 
-import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import { LoginScreen } from './LoginScreen';
 import * as auth from '../domain/auth';
@@ -22,7 +21,10 @@ describe('LoginScreen', () => {
     mockAuth.validateEmail.mockImplementation((email) => email.includes('@'));
     mockAuth.validatePassword.mockImplementation((password) => ({
       isValid: password.length >= 8,
-      error: password.length < 8 ? 'Password must be at least 8 characters' : undefined,
+      error:
+        password.length < 8
+          ? 'Password must be at least 8 characters'
+          : undefined,
     }));
   });
 
@@ -67,7 +69,11 @@ describe('LoginScreen', () => {
     it('should call signIn with valid credentials', async () => {
       mockAuth.signIn.mockResolvedValue({
         success: true,
-        user: { id: '123', email: 'test@example.com', createdAt: new Date().toISOString() },
+        user: {
+          id: '123',
+          email: 'test@example.com',
+          createdAt: new Date().toISOString(),
+        },
       });
 
       const { getByPlaceholderText, getByText } = render(
@@ -79,7 +85,10 @@ describe('LoginScreen', () => {
       fireEvent.press(getByText('Sign In'));
 
       await waitFor(() => {
-        expect(mockAuth.signIn).toHaveBeenCalledWith('test@example.com', 'password123');
+        expect(mockAuth.signIn).toHaveBeenCalledWith(
+          'test@example.com',
+          'password123'
+        );
         expect(mockOnAuthSuccess).toHaveBeenCalled();
       });
     });
@@ -107,7 +116,11 @@ describe('LoginScreen', () => {
     it('should call signUp with valid credentials', async () => {
       mockAuth.signUp.mockResolvedValue({
         success: true,
-        user: { id: '123', email: 'new@example.com', createdAt: new Date().toISOString() },
+        user: {
+          id: '123',
+          email: 'new@example.com',
+          createdAt: new Date().toISOString(),
+        },
       });
 
       const { getByPlaceholderText, getByText } = render(
@@ -122,7 +135,10 @@ describe('LoginScreen', () => {
       fireEvent.press(getByText('Sign Up'));
 
       await waitFor(() => {
-        expect(mockAuth.signUp).toHaveBeenCalledWith('new@example.com', 'password123');
+        expect(mockAuth.signUp).toHaveBeenCalledWith(
+          'new@example.com',
+          'password123'
+        );
         expect(mockOnAuthSuccess).toHaveBeenCalled();
       });
     });
@@ -142,7 +158,9 @@ describe('LoginScreen', () => {
       fireEvent.changeText(getByPlaceholderText('Password'), 'short');
       fireEvent.press(getByText('Sign Up'));
 
-      expect(await findByText('Password must be at least 8 characters')).toBeTruthy();
+      expect(
+        await findByText('Password must be at least 8 characters')
+      ).toBeTruthy();
       expect(mockOnAuthSuccess).not.toHaveBeenCalled();
     });
   });
@@ -169,7 +187,11 @@ describe('LoginScreen', () => {
       // Resolve the promise
       resolveSignIn!({
         success: true,
-        user: { id: '123', email: 'test@example.com', createdAt: new Date().toISOString() },
+        user: {
+          id: '123',
+          email: 'test@example.com',
+          createdAt: new Date().toISOString(),
+        },
       });
 
       await waitFor(() => {

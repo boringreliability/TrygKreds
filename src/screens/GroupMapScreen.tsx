@@ -4,7 +4,7 @@
  * Displays group member locations on a map with location sharing controls.
  */
 
-import React, { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -20,17 +20,17 @@ import { useAuth } from '../hooks/useAuth';
 import {
   getGroupMemberLocations,
   getLocationSharingStatus,
-  enableLocationSharing,
-  disableLocationSharing,
   updateMyLocation,
-  removeMyLocation,
   type MemberLocation,
 } from '../domain/location';
+import { formatMemberName, memberInitial } from '../domain/profiles';
 import {
   requestForegroundPermission,
   getCurrentLocation,
   getForegroundPermissionStatus,
 } from '../services/location';
+import { startSharing, stopSharing } from '../services/sharingControl';
+import { SosButton } from '../components/SosButton';
 
 interface GroupMapScreenProps {
   groupId: string;
@@ -119,25 +119,30 @@ export function GroupMapScreen({
           }
         }
 
-        // Enable sharing in database
-        const enableResult = await enableLocationSharing(user.id, groupId);
+        // Ward 6: one place owns "enable, send a position, start the background
+        // task". The privacy screen calls the same function.
+        const enableResult = await startSharing(user.id, groupId);
         if (!enableResult.success) {
-          Alert.alert('Error', enableResult.error || 'Failed to enable sharing');
+          Alert.alert(
+            'Error',
+            enableResult.error || 'Failed to enable sharing'
+          );
           setIsTogglingSharing(false);
           return;
         }
 
-        // Get and send current location
-        const locationResult = await getCurrentLocation();
-        if (locationResult.success && locationResult.coordinates) {
-          await updateMyLocation(user.id, groupId, locationResult.coordinates);
-        }
-
         setIsSharingEnabled(true);
       } else {
-        // Disabling sharing
-        await disableLocationSharing(user.id, groupId);
-        await removeMyLocation(user.id, groupId);
+        // stopSharing deletes the stored position and stops the background task
+        // only once nothing is shared anywhere. The screen does not have to
+        // remember either rule.
+        const stopResult = await stopSharing(user.id, groupId);
+        if (!stopResult.success) {
+          Alert.alert('Error', stopResult.error || 'Failed to stop sharing');
+          setIsTogglingSharing(false);
+          return;
+        }
+
         setIsSharingEnabled(false);
       }
 
@@ -218,7 +223,10 @@ export function GroupMapScreen({
                 latitude: location.latitude,
                 longitude: location.longitude,
               }}
-              title={location.userId === user?.id ? 'You' : 'Member'}
+              title={formatMemberName(
+                location.displayName,
+                location.userId === user?.id
+              )}
               description={`Last seen: ${formatLastSeen(location.updatedAt)}`}
             />
           ))}
@@ -226,6 +234,11 @@ export function GroupMapScreen({
       </View>
 
       <View style={styles.controls}>
+        {/* Ward 5: the most prominent control on the screen, deliberately. */}
+        <View style={styles.sosRow}>
+          <SosButton />
+        </View>
+
         <View style={styles.sharingRow}>
           <View style={styles.sharingInfo}>
             <Text style={styles.sharingLabel}>Share my location</Text>
@@ -271,12 +284,18 @@ export function GroupMapScreen({
             <View key={location.id} style={styles.memberItem}>
               <View style={styles.memberAvatar}>
                 <Text style={styles.memberAvatarText}>
-                  {location.userId === user?.id ? 'Y' : 'M'}
+                  {memberInitial(
+                    location.displayName,
+                    location.userId === user?.id
+                  )}
                 </Text>
               </View>
               <View style={styles.memberInfo}>
                 <Text style={styles.memberName}>
-                  {location.userId === user?.id ? 'You' : 'Member'}
+                  {formatMemberName(
+                    location.displayName,
+                    location.userId === user?.id
+                  )}
                 </Text>
                 <Text style={styles.memberLastSeen}>
                   Last seen: {formatLastSeen(location.updatedAt)}
@@ -330,6 +349,9 @@ const styles = StyleSheet.create({
   },
   map: {
     flex: 1,
+  },
+  sosRow: {
+    marginBottom: 16,
   },
   controls: {
     padding: 16,

@@ -10,7 +10,8 @@ import {
   joinGroup,
   leaveGroup,
   getMyGroups,
-  generateNewInviteCode,
+  getGroupMembers,
+  rotateInviteCode,
   validateGroupName,
   type Group,
 } from './groups';
@@ -128,75 +129,82 @@ describe('Groups Domain', () => {
     });
   });
 
+  // Ward 3.2: joining is a single server-side call. It cannot be done from the
+  // client, because resolving an invite code to a group requires reading a row
+  // the caller is not yet allowed to see, and no RLS policy can grant that
+  // without exposing every group in the table.
   describe('joinGroup', () => {
-    const mockUserId = 'user-456';
+    it('should join a group via the invite code and return its id', async () => {
+      mockSupabaseRpc.mockResolvedValue({ data: 'group-123', error: null });
 
-    it('should join group with valid invite code', async () => {
-      const mockGroup = {
-        id: 'group-123',
-        name: 'Family',
-        owner_id: 'user-123',
-        invite_code: 'ABC123',
-      };
-
-      // Mock for getGroupByInviteCode
-      const selectMock = createChainableMock({
-        data: mockGroup,
-        error: null,
-      });
-
-      // Mock for insert member
-      const insertMock = createChainableMock({
-        data: { id: 'member-123' },
-        error: null,
-      });
-
-      mockSupabaseFrom
-        .mockReturnValueOnce(selectMock)
-        .mockReturnValueOnce(insertMock);
-
-      const result = await joinGroup('ABC123', mockUserId);
+      const result = await joinGroup('ABC1234567');
 
       expect(result.success).toBe(true);
+      expect(result.groupId).toBe('group-123');
+      expect(mockSupabaseRpc).toHaveBeenCalledWith(
+        'join_group_by_invite_code',
+        {
+          p_invite_code: 'ABC1234567',
+        }
+      );
     });
 
-    it('should return error for invalid invite code', async () => {
-      const selectMock = createChainableMock({
-        data: null,
-        error: null,
-      });
-      mockSupabaseFrom.mockReturnValue(selectMock);
+    it('should normalise the invite code before sending it', async () => {
+      mockSupabaseRpc.mockResolvedValue({ data: 'group-123', error: null });
 
-      const result = await joinGroup('INVALID', mockUserId);
+      await joinGroup('  abc1234567  ');
+
+      expect(mockSupabaseRpc).toHaveBeenCalledWith(
+        'join_group_by_invite_code',
+        {
+          p_invite_code: 'ABC1234567',
+        }
+      );
+    });
+
+    it('should never write to group_members directly', async () => {
+      mockSupabaseRpc.mockResolvedValue({ data: 'group-123', error: null });
+
+      await joinGroup('ABC1234567');
+
+      // The membership row is created by the SECURITY DEFINER function, after it
+      // has validated the code. A direct table write here would mean anyone who
+      // learned a group's UUID could enrol themselves.
+      expect(mockSupabaseFrom).not.toHaveBeenCalled();
+    });
+
+    it('should reject an invalid, expired or revoked code', async () => {
+      // P0002 (no_data_found) is raised for unknown, expired and revoked codes
+      // alike, so the client cannot tell them apart either.
+      mockSupabaseRpc.mockResolvedValue({
+        data: null,
+        error: { code: 'P0002', message: 'Invalid or expired invite code' },
+      });
+
+      const result = await joinGroup('EXPIRED123');
 
       expect(result.success).toBe(false);
-      expect(result.error).toBe('Invalid invite code');
+      expect(result.error).toBe('Invalid or expired invite code');
     });
 
     it('should return error when already a member', async () => {
-      const mockGroup = {
-        id: 'group-123',
-        name: 'Family',
-      };
-
-      const selectMock = createChainableMock({
-        data: mockGroup,
-        error: null,
-      });
-
-      const insertMock = createChainableMock({
+      mockSupabaseRpc.mockResolvedValue({
         data: null,
-        error: { code: '23505', message: 'duplicate key' },
+        error: { code: '23505', message: 'Already a member of this group' },
       });
 
-      mockSupabaseFrom
-        .mockReturnValueOnce(selectMock)
-        .mockReturnValueOnce(insertMock);
-
-      const result = await joinGroup('ABC123', mockUserId);
+      const result = await joinGroup('ABC1234567');
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('You are already a member of this group');
+    });
+
+    it('should reject an empty invite code without calling the server', async () => {
+      const result = await joinGroup('   ');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Invite code is required');
+      expect(mockSupabaseRpc).not.toHaveBeenCalled();
     });
   });
 
@@ -280,19 +288,130 @@ describe('Groups Domain', () => {
     });
   });
 
-  describe('generateNewInviteCode', () => {
-    it('should generate new invite code for owner', async () => {
-      const updateMock = createChainableMock({
-        data: { invite_code: 'NEWCODE1' },
-        error: null,
-      });
-      mockSupabaseFrom.mockReturnValue(updateMock);
-      mockSupabaseRpc.mockResolvedValue({ data: 'NEWCODE1', error: null });
+  // Ward 3.3: members carry display names so lists can show people, not ids.
+  describe('getGroupMembers', () => {
+    const mockGroupId = 'group-123';
 
-      const result = await generateNewInviteCode('group-123');
+    // Two calls: the membership rows, then display names for those users.
+    const mockTables = (
+      memberRows: unknown,
+      memberError: unknown,
+      profileRows: unknown = [],
+      profileError: unknown = null
+    ) => {
+      mockSupabaseFrom.mockImplementation((table: string) => {
+        if (table === 'profiles') {
+          return {
+            select: jest.fn().mockReturnThis(),
+            in: jest
+              .fn()
+              .mockResolvedValue({ data: profileRows, error: profileError }),
+          };
+        }
+        return {
+          select: jest.fn().mockReturnThis(),
+          eq: jest
+            .fn()
+            .mockResolvedValue({ data: memberRows, error: memberError }),
+        };
+      });
+    };
+
+    const memberRow = (id: string, userId: string, role: string) => ({
+      id,
+      group_id: mockGroupId,
+      user_id: userId,
+      role,
+      joined_at: new Date().toISOString(),
+    });
+
+    it('should return the members of a group', async () => {
+      mockTables(
+        [
+          memberRow('m-1', 'user-1', 'owner'),
+          memberRow('m-2', 'user-2', 'member'),
+        ],
+        null
+      );
+
+      const result = await getGroupMembers(mockGroupId);
 
       expect(result.success).toBe(true);
-      expect(result.inviteCode).toBeDefined();
+      expect(result.members).toHaveLength(2);
+      expect(result.members?.[0].role).toBe('owner');
+    });
+
+    it('should attach display names', async () => {
+      mockTables([memberRow('m-1', 'user-1', 'owner')], null, [
+        { id: 'user-1', display_name: 'Mor' },
+      ]);
+
+      const result = await getGroupMembers(mockGroupId);
+
+      expect(result.members?.[0].displayName).toBe('Mor');
+    });
+
+    it('should use null when a member has no display name', async () => {
+      mockTables([memberRow('m-1', 'user-1', 'owner')], null, [
+        { id: 'user-1', display_name: null },
+      ]);
+
+      const result = await getGroupMembers(mockGroupId);
+
+      expect(result.members?.[0].displayName).toBeNull();
+    });
+
+    it('should handle a database error', async () => {
+      mockTables(null, { message: 'Database error' });
+
+      const result = await getGroupMembers(mockGroupId);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Database error');
+    });
+  });
+
+  // Ward 3.2: rotation replaces the code, clears any revocation and starts a
+  // fresh expiry window. All three happen in one server-side function so they
+  // cannot drift apart.
+  describe('rotateInviteCode', () => {
+    it('should return the new code for the owner', async () => {
+      mockSupabaseRpc.mockResolvedValue({ data: 'NEWCODE1234', error: null });
+
+      const result = await rotateInviteCode('group-123');
+
+      expect(result.success).toBe(true);
+      expect(result.inviteCode).toBe('NEWCODE1234');
+      expect(mockSupabaseRpc).toHaveBeenCalledWith('rotate_invite_code', {
+        p_group_id: 'group-123',
+      });
+    });
+
+    it('should not update the groups table directly', async () => {
+      mockSupabaseRpc.mockResolvedValue({ data: 'NEWCODE1234', error: null });
+
+      await rotateInviteCode('group-123');
+
+      // A client-side UPDATE would replace the code without resetting expiry
+      // and revocation, quietly reviving a code the owner had revoked.
+      expect(mockSupabaseFrom).not.toHaveBeenCalled();
+    });
+
+    it('should reject a non-owner', async () => {
+      mockSupabaseRpc.mockResolvedValue({
+        data: null,
+        error: {
+          code: '42501',
+          message: 'Only the group owner can rotate the invite code',
+        },
+      });
+
+      const result = await rotateInviteCode('group-123');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe(
+        'Only the group owner can rotate the invite code'
+      );
     });
   });
 });

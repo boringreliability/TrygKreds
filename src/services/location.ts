@@ -25,7 +25,8 @@ export interface PermissionResult {
  * Request foreground location permission
  */
 export async function requestForegroundPermission(): Promise<PermissionResult> {
-  const { status, canAskAgain } = await ExpoLocation.requestForegroundPermissionsAsync();
+  const { status, canAskAgain } =
+    await ExpoLocation.requestForegroundPermissionsAsync();
   return {
     status: status as LocationPermissionStatus,
     canAskAgain,
@@ -36,7 +37,8 @@ export async function requestForegroundPermission(): Promise<PermissionResult> {
  * Check current foreground location permission status
  */
 export async function getForegroundPermissionStatus(): Promise<PermissionResult> {
-  const { status, canAskAgain } = await ExpoLocation.getForegroundPermissionsAsync();
+  const { status, canAskAgain } =
+    await ExpoLocation.getForegroundPermissionsAsync();
   return {
     status: status as LocationPermissionStatus,
     canAskAgain,
@@ -110,7 +112,10 @@ export async function getLastKnownLocation(): Promise<LocationServiceResult> {
   } catch (error) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to get last known location',
+      error:
+        error instanceof Error
+          ? error.message
+          : 'Failed to get last known location',
     };
   }
 }

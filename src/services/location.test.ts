@@ -22,6 +22,14 @@ jest.mock('expo-location', () => ({
   Accuracy: {
     Balanced: 3,
   },
+  // Mirrors expo-location's PermissionStatus string enum. The real module types
+  // declare `status` as this enum, so the mocked resolved values must use it
+  // rather than bare string literals. The runtime values are the same strings.
+  PermissionStatus: {
+    GRANTED: 'granted',
+    DENIED: 'denied',
+    UNDETERMINED: 'undetermined',
+  },
 }));
 
 import * as ExpoLocation from 'expo-location';
@@ -36,7 +44,7 @@ describe('Location Service', () => {
   describe('requestForegroundPermission', () => {
     it('should return granted status when permission is granted', async () => {
       mockExpoLocation.requestForegroundPermissionsAsync.mockResolvedValue({
-        status: 'granted',
+        status: ExpoLocation.PermissionStatus.GRANTED,
         canAskAgain: true,
         granted: true,
         expires: 'never',
@@ -50,7 +58,7 @@ describe('Location Service', () => {
 
     it('should return denied status when permission is denied', async () => {
       mockExpoLocation.requestForegroundPermissionsAsync.mockResolvedValue({
-        status: 'denied',
+        status: ExpoLocation.PermissionStatus.DENIED,
         canAskAgain: false,
         granted: false,
         expires: 'never',
@@ -66,7 +74,7 @@ describe('Location Service', () => {
   describe('getForegroundPermissionStatus', () => {
     it('should return current permission status', async () => {
       mockExpoLocation.getForegroundPermissionsAsync.mockResolvedValue({
-        status: 'granted',
+        status: ExpoLocation.PermissionStatus.GRANTED,
         canAskAgain: true,
         granted: true,
         expires: 'never',
@@ -79,7 +87,7 @@ describe('Location Service', () => {
 
     it('should return undetermined for new app', async () => {
       mockExpoLocation.getForegroundPermissionsAsync.mockResolvedValue({
-        status: 'undetermined',
+        status: ExpoLocation.PermissionStatus.UNDETERMINED,
         canAskAgain: true,
         granted: false,
         expires: 'never',
@@ -95,7 +103,7 @@ describe('Location Service', () => {
   describe('getCurrentLocation', () => {
     it('should return location when permission is granted', async () => {
       mockExpoLocation.getForegroundPermissionsAsync.mockResolvedValue({
-        status: 'granted',
+        status: ExpoLocation.PermissionStatus.GRANTED,
         canAskAgain: true,
         granted: true,
         expires: 'never',
@@ -123,7 +131,7 @@ describe('Location Service', () => {
 
     it('should return error when permission is denied', async () => {
       mockExpoLocation.getForegroundPermissionsAsync.mockResolvedValue({
-        status: 'denied',
+        status: ExpoLocation.PermissionStatus.DENIED,
         canAskAgain: false,
         granted: false,
         expires: 'never',
@@ -137,7 +145,7 @@ describe('Location Service', () => {
 
     it('should handle location fetch error', async () => {
       mockExpoLocation.getForegroundPermissionsAsync.mockResolvedValue({
-        status: 'granted',
+        status: ExpoLocation.PermissionStatus.GRANTED,
         canAskAgain: true,
         granted: true,
         expires: 'never',
@@ -154,7 +162,7 @@ describe('Location Service', () => {
 
     it('should handle null accuracy', async () => {
       mockExpoLocation.getForegroundPermissionsAsync.mockResolvedValue({
-        status: 'granted',
+        status: ExpoLocation.PermissionStatus.GRANTED,
         canAskAgain: true,
         granted: true,
         expires: 'never',
@@ -182,7 +190,7 @@ describe('Location Service', () => {
   describe('getLastKnownLocation', () => {
     it('should return last known location when available', async () => {
       mockExpoLocation.getForegroundPermissionsAsync.mockResolvedValue({
-        status: 'granted',
+        status: ExpoLocation.PermissionStatus.GRANTED,
         canAskAgain: true,
         granted: true,
         expires: 'never',
@@ -208,7 +216,7 @@ describe('Location Service', () => {
 
     it('should return error when no last known location', async () => {
       mockExpoLocation.getForegroundPermissionsAsync.mockResolvedValue({
-        status: 'granted',
+        status: ExpoLocation.PermissionStatus.GRANTED,
         canAskAgain: true,
         granted: true,
         expires: 'never',
@@ -223,7 +231,7 @@ describe('Location Service', () => {
 
     it('should return error when permission denied', async () => {
       mockExpoLocation.getForegroundPermissionsAsync.mockResolvedValue({
-        status: 'denied',
+        status: ExpoLocation.PermissionStatus.DENIED,
         canAskAgain: false,
         granted: false,
         expires: 'never',

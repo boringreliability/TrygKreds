@@ -15,14 +15,26 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.trygkreds.app"
+      "bundleIdentifier": "com.trygkreds.app",
+      "infoPlist": {
+        "UIBackgroundModes": ["location"],
+        "NSLocationWhenInUseUsageDescription": "TrygKreds shows your last known location to the groups you choose to share with.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "TrygKreds keeps your last known location up to date for the groups you share with, so they can see roughly where you are. Only your latest position is stored, never a history, and it is deleted when you stop sharing."
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.trygkreds.app"
+      "package": "com.trygkreds.app",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -30,7 +42,18 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "TrygKreds keeps your last known location up to date for the groups you share with. Only your latest position is stored, never a history.",
+          "locationWhenInUsePermission": "TrygKreds shows your last known location to the groups you choose to share with.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
+      ],
+      "expo-task-manager",
+      "expo-notifications"
     ],
     "experiments": {
       "typedRoutes": true

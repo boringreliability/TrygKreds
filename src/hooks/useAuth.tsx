@@ -18,6 +18,10 @@ import {
   signOut as authSignOut,
   type User,
 } from '../domain/auth';
+import {
+  registerForPushNotifications,
+  unregisterFromPushNotifications,
+} from '../services/notifications';
 
 interface AuthContextValue {
   user: User | null;
@@ -52,26 +56,44 @@ export function AuthProvider({ children }: AuthProviderProps) {
     initAuth();
 
     // Listen for auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (event === 'SIGNED_IN' && session?.user) {
-          setUser({
-            id: session.user.id,
-            email: session.user.email || '',
-            createdAt: session.user.created_at || new Date().toISOString(),
-          });
-        } else if (event === 'SIGNED_OUT') {
-          setUser(null);
-        }
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session?.user) {
+        setUser({
+          id: session.user.id,
+          email: session.user.email || '',
+          createdAt: session.user.created_at || new Date().toISOString(),
+        });
+      } else if (event === 'SIGNED_OUT') {
+        setUser(null);
       }
-    );
+    });
 
     return () => {
       subscription.unsubscribe();
     };
   }, [refreshUser]);
 
+  // Ward 5: register this device for SOS alerts whenever there is a session.
+  //
+  // Unconditionally, on every run: push_tokens is sealed, so the client cannot
+  // read back what is stored and has no way to tell whether it is current.
+  // Re-registering is idempotent -- the database function upserts on the token.
+  useEffect(() => {
+    if (!user) return;
+
+    // Fire and forget. Notifications are a convenience: an SOS is recorded and
+    // visible in the app regardless, so a failure here must not block the
+    // session or surface as an error.
+    registerForPushNotifications();
+  }, [user]);
+
   const signOut = useCallback(async () => {
+    // Forget this device first, while the session is still valid -- removing a
+    // token needs an authenticated call. A shared phone must stop receiving
+    // alerts for an account that has left it.
+    await unregisterFromPushNotifications();
     await authSignOut();
     setUser(null);
   }, []);

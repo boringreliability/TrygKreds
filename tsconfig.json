@@ -11,18 +11,16 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "baseUrl": ".",
+    // No "baseUrl": deprecated in TypeScript 6 and removed in 7. Since TS 5.0
+    // "paths" entries resolve relative to this tsconfig's own directory.
     "paths": {
-      "@/*": ["src/*"]
-    }
+      "@/*": ["./src/*"]
+    },
+    // TypeScript 6 no longer auto-includes every package under node_modules/@types;
+    // global type packages must be listed explicitly. "jest" provides describe/it/
+    // expect/jest, "node" provides process.env (used in src/config/env.ts).
+    "types": ["jest", "node"]
   },
-  "include": [
-    "**/*.ts",
-    "**/*.tsx",
-    ".expo/types/**/*.ts",
-    "expo-env.d.ts"
-  ],
-  "exclude": [
-    "node_modules"
-  ]
+  "include": ["**/*.ts", "**/*.tsx", ".expo/types/**/*.ts", "expo-env.d.ts"],
+  "exclude": ["node_modules"]
 }

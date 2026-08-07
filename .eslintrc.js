@@ -34,6 +34,21 @@ module.exports = {
     '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
     'no-console': 'warn',
   },
+  overrides: [
+    {
+      // The privacy guards in scripts/ are plain CommonJS Node CLIs. require()
+      // is how they load modules, and printing to the console is their entire
+      // job -- both rules here are about app code, not build tooling.
+      files: ['scripts/**/*.js'],
+      parserOptions: {
+        sourceType: 'script',
+      },
+      rules: {
+        '@typescript-eslint/no-require-imports': 'off',
+        'no-console': 'off',
+      },
+    },
+  ],
   ignorePatterns: [
     'node_modules/',
     '.expo/',

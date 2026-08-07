@@ -6,6 +6,8 @@
  */
 
 import { supabase } from '../services/supabase';
+import { getProfilesForUsers } from './profiles';
+import type { LastSentPosition } from './backgroundLocation';
 
 // Types
 export interface LocationCoordinates {
@@ -22,6 +24,12 @@ export interface MemberLocation {
   longitude: number;
   accuracy: number;
   updatedAt: string;
+  /**
+   * The member's chosen display name, or null when they have not set one or
+   * their profile is not visible to the caller. Use formatMemberName() to turn
+   * this into something to show a human -- never fall back to userId.
+   */
+  displayName?: string | null;
 }
 
 export interface LocationSharingStatus {
@@ -58,10 +66,7 @@ export interface SimpleResult {
 export function validateCoordinates(coords: LocationCoordinates): boolean {
   const { latitude, longitude } = coords;
   return (
-    latitude >= -90 &&
-    latitude <= 90 &&
-    longitude >= -180 &&
-    longitude <= 180
+    latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180
   );
 }
 
@@ -140,6 +145,20 @@ export async function getGroupMemberLocations(
 
   const locations: MemberLocation[] = (data || []).map(mapSupabaseLocation);
 
+  // Attach display names so the map can label markers with names rather than
+  // ids. A failure here degrades to unnamed markers on purpose: not knowing
+  // what to call someone is no reason to drop them off the map.
+  const profilesResult = await getProfilesForUsers(
+    locations.map((location) => location.userId)
+  );
+
+  if (profilesResult.success && profilesResult.profiles) {
+    const profiles = profilesResult.profiles;
+    for (const location of locations) {
+      location.displayName = profiles[location.userId]?.displayName ?? null;
+    }
+  }
+
   return { success: true, locations };
 }
 
@@ -171,6 +190,15 @@ export async function enableLocationSharing(
 }
 
 // Disable location sharing for a group
+/**
+ * Turn off location sharing for a group and delete the stored position.
+ *
+ * The deletion is part of this function, not of the screen that calls it. A
+ * position that merely sits behind an RLS policy is still a position sitting in
+ * the database, and "turning sharing off deletes it" is a promise PRIVACY.md
+ * makes. Enforcing it here means every caller keeps that promise -- including
+ * the background task and the privacy screen still to come.
+ */
 export async function disableLocationSharing(
   userId: string,
   groupId: string
@@ -194,7 +222,11 @@ export async function disableLocationSharing(
     return { success: false, error: error.message };
   }
 
-  return { success: true };
+  // Sharing is already off at this point, so the position is hidden either way.
+  // Report a failure to erase it anyway rather than swallowing it: the user
+  // asked for it gone, and silently leaving it behind would be the one outcome
+  // they must not be told is a success.
+  return removeMyLocation(userId, groupId);
 }
 
 // Get location sharing status for a user in a group
@@ -237,6 +269,66 @@ export async function getLocationSharingStatus(
 }
 
 // Remove user's location from a group
+/**
+ * Group ids the user is currently sharing their location with.
+ *
+ * The background task needs this on every run: it is half of the gate that
+ * decides whether to do any work at all.
+ */
+export async function getMySharingGroupIds(
+  userId: string
+): Promise<{ success: boolean; groupIds?: string[]; error?: string }> {
+  const { data, error } = await supabase
+    .from('location_sharing_settings')
+    .select('group_id')
+    .eq('user_id', userId)
+    .eq('sharing_enabled', true);
+
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  return {
+    success: true,
+    groupIds: (data || []).map((row: { group_id: string }) => row.group_id),
+  };
+}
+
+/**
+ * The user's own stored positions, keyed by group id.
+ *
+ * This is where "when did I last send, and from where?" comes from. Deriving it
+ * from the row we are about to overwrite means there is no separate local copy
+ * of your position on the device to keep in sync -- or to leak. Reading your own
+ * row is permitted by the RLS policy on member_locations even when you are not
+ * sharing.
+ */
+export async function getMyStoredPositions(userId: string): Promise<{
+  success: boolean;
+  positions?: Record<string, LastSentPosition>;
+  error?: string;
+}> {
+  const { data, error } = await supabase
+    .from('member_locations')
+    .select('group_id, latitude, longitude, updated_at')
+    .eq('user_id', userId);
+
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  const positions: Record<string, LastSentPosition> = {};
+  for (const row of data || []) {
+    positions[row.group_id] = {
+      latitude: row.latitude,
+      longitude: row.longitude,
+      sentAt: new Date(row.updated_at).getTime(),
+    };
+  }
+
+  return { success: true, positions };
+}
+
 export async function removeMyLocation(
   userId: string,
   groupId: string

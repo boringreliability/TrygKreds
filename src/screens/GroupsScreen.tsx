@@ -4,7 +4,7 @@
  * Displays the user's groups and options to create/join groups.
  */
 
-import React, { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -21,12 +21,16 @@ import { getMyGroups, type GroupWithRole } from '../domain/groups';
 interface GroupsScreenProps {
   onCreateGroup?: () => void;
   onJoinGroup?: () => void;
+  onEditProfile?: () => void;
+  onOpenPrivacy?: () => void;
   onSelectGroup?: (group: GroupWithRole) => void;
 }
 
 export function GroupsScreen({
   onCreateGroup,
   onJoinGroup,
+  onEditProfile,
+  onOpenPrivacy,
   onSelectGroup,
 }: GroupsScreenProps) {
   const { user, signOut } = useAuth();
@@ -133,6 +137,22 @@ export function GroupsScreen({
       </View>
 
       <View style={styles.footer}>
+        <TouchableOpacity
+          testID="edit-profile-button"
+          style={styles.signOutButton}
+          onPress={onEditProfile}
+        >
+          <Text style={styles.footerLink}>Display name</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          testID="open-privacy-button"
+          style={styles.signOutButton}
+          onPress={onOpenPrivacy}
+        >
+          <Text style={styles.footerLink}>Privacy</Text>
+        </TouchableOpacity>
+
         <TouchableOpacity style={styles.signOutButton} onPress={signOut}>
           <Text style={styles.signOutText}>Sign Out</Text>
         </TouchableOpacity>
@@ -264,10 +284,16 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   footer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     paddingHorizontal: 24,
     paddingVertical: 16,
     borderTopWidth: 1,
     borderTopColor: '#eee',
+  },
+  footerLink: {
+    color: '#4F46E5',
+    fontSize: 15,
   },
   signOutButton: {
     alignItems: 'center',

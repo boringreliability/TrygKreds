@@ -4,7 +4,7 @@
  * Allows users to join a group via invite code.
  */
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   View,
   Text,
@@ -47,7 +47,9 @@ export function JoinGroupScreen({ onSuccess, onCancel }: JoinGroupScreenProps) {
     setIsLoading(true);
 
     try {
-      const result = await joinGroup(trimmedCode, user.id);
+      // No user id is passed: the server derives the joining user from the
+      // session, so the client cannot enrol anyone but itself.
+      const result = await joinGroup(trimmedCode);
 
       if (result.success) {
         onSuccess();

@@ -11,8 +11,10 @@
 export const config = {
   // Supabase configuration
   // These should be set via environment variables in production
-  supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
-  supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key',
+  supabaseUrl:
+    process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
+  supabaseAnonKey:
+    process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key',
 
   // App configuration
   appName: 'TrygKreds',
