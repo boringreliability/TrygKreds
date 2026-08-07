@@ -1,438 +1,263 @@
-# Plan for building TrygKreds with BDD + GS-TDD (test-first)
+# TrygKreds — working notes
 
-You are an AI pair-programmer helping me build an open-source, privacy-friendly alternative to Life360.
+An open-source, privacy-friendly alternative to Life360, built **BDD + test-first**
+as a showcase of the GS-TDD method.
 
-The project is also a **showcase of my GS-TDD method** and should be built **BDD + test-first**, in small vertical slices ("wards").
-
-Your goals:
-
-1. Keep the scope tight: **groups, location sharing, SOS. Nothing more.**
-2. Every feature is driven by:
-
-   * BDD-style **feature files (Gherkin)**
-   * Automated **tests written before implementation**
-3. Code must be clean, readable and documented – this repo is meant as an example for others.
+Read [PRIVACY.md](../PRIVACY.md) before changing anything that touches data. It is
+not marketing — it names the test or script that enforces each guarantee, and
+several of those guarantees are load-bearing in the schema.
 
 ---
 
-## 1. Functional scope (MVP)
+## 1. Status
 
-Core features:
+Ward 0–6 are built, including four preparatory wards (3.1–3.4) that were not in
+the original plan. Feature files for every ward live in `/specs`.
 
-1. **Groups ("circles")**
+| Ward | What it delivered |
+| ---- | ----------------- |
+| 0 | Skeleton, Jest, ESLint, CI |
+| 1 | Supabase auth, app shell |
+| 2 | Groups: create, join by invite code |
+| 3 | Manual location sharing, group map |
+| 3.1 | Toolchain upgrade to Expo SDK 57 / RN 0.86 / React 19 |
+| 3.2 | RLS hardening: recursion, `security_invoker`, invite expiry/rotation |
+| 3.3 | `profiles` and display names |
+| 3.4 | `PRIVACY.md` + CI privacy guards |
+| 4 | Background location updates |
+| 5 | SOS with push notifications |
+| 6 | Privacy controls: who can see me, pause |
 
-   * Create a group (e.g. "Family", "Dad & Son")
-   * Join a group via invite code/link
-   * View members of a group
+Current shape: **335 Jest tests**, **95 RLS assertions** against a real
+PostgreSQL, two CI guards that fail the build.
 
-2. **Location sharing**
+### Not yet verified
 
-   * User can toggle: "Share my location with this group"
-   * App shows **last known location** of each member on a map
-   * No full history in v1, just "last seen at HH:MM" and coordinates
-
-3. **SOS (panic button)**
-
-   * Big SOS button in the UI
-   * When pressed:
-
-     * Saves an SOS event in backend (who, when, lat/lng)
-     * Sends push notification to all members in the group
-
-4. **Privacy controls**
-
-   * User can:
-
-     * See who can see their location
-     * Pause location sharing (e.g. until re-enabled or for a fixed time)
-
-Out of scope for v1:
-
-* Geofencing
-* Driving scores, battery usage stats, timeline/history
-* In-app chat
-* Ads, subscriptions, upsells
+- **Nothing has run on a real phone.** Background location, push delivery, map
+  tiles and permission dialogs are tested against mocks and a real Postgres — not
+  against iOS or Android. This is the next real verification step.
+- **The Edge Function is reviewed, not unit-tested.** It is Deno; Jest cannot run
+  it. Only its privacy-relevant properties are enforced, by reading its source.
+- Two `expo-doctor` checks (config schema, React Native Directory) need network
+  access that was unavailable while building, and should be run before release.
 
 ---
 
-## 2. Tech stack and constraints
+## 2. Scope
 
-Use this stack unless explicitly instructed otherwise:
+Keep it tight: **groups, location sharing, SOS, privacy controls.** Nothing more.
 
-* **Mobile app**: React Native with Expo, TypeScript
-* **State management**: React Query + Context or lightweight store (Zustand) where needed
-* **Backend**: Supabase (Postgres, Auth, Realtime, Edge Functions)
-* **Testing**:
+Deliberately out of scope, and it should stay that way: geofencing, driving
+scores, battery statistics, timelines or history of any kind, in-app chat, ads,
+subscriptions, upsells.
 
-  * Unit & integration: Jest + React Native Testing Library
-  * For API calls: MSW (Mock Service Worker) or equivalent mocking inside Jest
-* **Maps**: `react-native-maps` (or Expo's supported equivalent)
-* **Push notifications**: Expo Notifications + Supabase function to trigger pushes
-
-Code style:
-
-* TypeScript strict mode
-* ESLint + Prettier
-* Simple, boring architecture. Small, focused modules.
+"No history" is not just a scope decision — see the invariants below.
 
 ---
 
-## 3. Repository structure
+## 3. Invariants
 
-Create a repo with structure similar to:
+These are the things that look like ordinary code but are not. Breaking one turns
+TrygKreds into the product it exists to avoid. Each has a test; if you change the
+behaviour, the test and PRIVACY.md change in the same pull request.
+
+### One position per user per group
+
+`member_locations` carries `UNIQUE(user_id, group_id)` and **every write is an
+upsert against it**. Replacing an upsert with an insert, or dropping that
+constraint, silently creates a location history.
+Enforced by `supabase/tests/04_no_history_test.sql`.
+
+### Turning sharing off deletes the position
+
+`disableLocationSharing()` performs the deletion itself, so no caller can turn
+sharing off and leave a position behind. Do not move this into a screen — it lived
+there once, and it only worked because one call site remembered.
+Enforced by `src/domain/location.test.ts`.
+
+### RLS policies must not query the table they protect
+
+The Ward 2 policies did, and Postgres aborted every read path with `42P17`. Use
+the `SECURITY DEFINER` helpers instead:
+
+- `public.is_group_member(group_id)` — "am I in this group?"
+- `public.shares_group_with(user_id)` — "do I share any group with this person?"
+
+Both resolve `auth.uid()` internally, so a caller can only ever ask about
+themselves. Add new helpers the same way rather than inlining subqueries.
+
+### Views need `security_invoker`
+
+A view without it runs with the owner's rights and ignores every policy
+underneath. Both existing views set it. **Requires PostgreSQL 15+.**
+Enforced by `supabase/tests/02_rls_test.sql`.
+
+### Some things cannot be a policy at all
+
+RLS cannot express "readable only by someone who already knows the secret" — a
+`USING` clause cannot see the client's `WHERE`, so any policy permissive enough
+would expose every row. Invite redemption and push-token registration therefore
+go through `SECURITY DEFINER` functions, and the tables stay closed.
+
+Related: PostgreSQL needs the `SELECT` privilege to evaluate
+`ON CONFLICT DO UPDATE` and the `WHERE` of an `UPDATE`/`DELETE`. A table a client
+cannot read is a table a client cannot usefully write to either — which is why
+`push_tokens` is fully sealed and only functions touch it.
+
+### The app talks only to your Supabase instance
+
+Enforced by `scripts/check-network-access.js`. Two disclosed exceptions, both in
+PRIVACY.md: map tiles (Apple/Google, via `react-native-maps`) and push delivery
+(`exp.host`, from the Edge Function).
+
+### SOS notifications carry no coordinates
+
+A notification passes through Expo, Apple and Google. Recipients open the app and
+read the position from the database, where RLS still applies.
+Enforced by a source-reading test in `src/domain/sos.test.ts`.
+
+### A privacy control never turns sharing ON by inference
+
+There is no "resume everything" action, deliberately. Restoring a remembered set
+of groups could re-enable a group the user had turned off on purpose. Resuming is
+always explicit and per-group.
+Enforced by `src/screens/PrivacyScreen.test.tsx`.
+
+### Never report a privacy failure as success
+
+Two specific cases, both tested: a partial "stop sharing with everyone" reports
+failure, and a failed read never falls back to showing "nobody can see you".
+Saying either when untrue is worse than an error message.
+
+### Never show a raw user id
+
+Use `formatMemberName()` / `memberInitial()`. An unnamed member gets a neutral
+placeholder, never a fragment of a UUID.
+
+---
+
+## 4. Architecture
+
+Three layers, and the boundaries are enforced:
+
+```
+src/domain/backgroundLocation.ts   No imports at all. Pure decisions.
+src/domain/*.ts                    Supabase only. No expo-*, no react-native.
+src/services/*.ts                  The only place Expo lives.
+```
+
+`src/domain/backgroundLocation.ts` has **zero imports**, and a test reads the file
+to keep it that way. Decision logic belongs there so it can be tested as
+arithmetic rather than through a device.
+
+Rules that span a database change *and* a platform effect go in
+`src/services/sharingControl.ts` — for example "stop the background task only when
+nothing is shared anywhere". That rule was about to live in two screens; keeping
+it in one place is why it is there.
+
+---
+
+## 5. Tech stack
+
+- **Expo SDK 57**, React Native 0.86, React 19, TypeScript 6, expo-router
+- **Supabase**: Postgres, Auth, Edge Functions
+- **Maps**: `react-native-maps`
+- **Background**: `expo-location` + `expo-task-manager`
+- **Push**: `expo-notifications` + the `send-sos-notification` Edge Function
+- **Tests**: Jest + React Native Testing Library **v13** (v14 makes `render()`
+  async, which would mean rewriting every screen test)
+
+Versions come from the SDK's own `bundledNativeModules.json` — never hardcode one
+from memory. Use `npx expo install --check` and `npx expo-doctor`.
+
+Adding a runtime dependency means adding it to the allowlist in
+`scripts/check-dependencies.js`, with a reason and its network behaviour. The
+build fails otherwise. That friction is the point, and there is no exception
+category — peer requirements are listed explicitly like everything else.
+
+---
+
+## 6. Repository structure
 
 ```text
 .
-├─ app/                      # Expo app entry
+├─ app/                      # expo-router routes
 ├─ src/
-│  ├─ components/
+│  ├─ components/            # SosButton
 │  ├─ screens/
-│  ├─ navigation/
-│  ├─ services/              # API clients, location service, notification service
-│  ├─ hooks/
-│  ├─ domain/                # Core domain logic (groups, location, sos)
+│  ├─ services/              # Expo-facing: location, background, notifications,
+│  │                         # sharingControl
+│  ├─ hooks/                 # useAuth
+│  ├─ domain/                # Core logic (groups, location, profiles, sos,
+│  │                         # privacy, backgroundLocation*)
 │  └─ config/
-├─ specs/                    # BDD feature files (Gherkin)
-│  ├─ ward-0-*.feature
-│  ├─ ward-1-*.feature
-│  └─ ...
-├─ supabase/                 # SQL migrations, policies, seed data
-├─ tests/
-│  ├─ e2e/ (optional later)
-│  └─ utils/
-├─ package.json
-├─ jest.config.ts
-└─ README.md
+├─ specs/                    # BDD feature files, one per ward
+├─ supabase/
+│  ├─ migrations/            # Schema + RLS policies
+│  ├─ tests/                 # RLS suite (runs against real PostgreSQL)
+│  └─ functions/             # Edge Functions (Deno)
+├─ scripts/                  # test-rls.sh, check-dependencies.js,
+│                            # check-network-access.js
+├─ tests/mocks/              # Module mocks wired via jest.config.js
+└─ PRIVACY.md                # The privacy contract
 ```
 
 ---
 
-## 4. GS-TDD "wards" – incremental plan
+## 7. How to work here
 
-We build in **wards** (small, vertical slices).
-Each ward:
+Unchanged method: feature file → tests → implementation → refactor while green.
 
-1. Define/extend **feature files** under `/specs`.
-2. Create/extend **tests** (Jest + RTL, and domain tests).
-3. Implement minimal code to satisfy tests.
-4. Refactor while keeping tests green.
+1. **Start with the feature file** in `/specs`. Show the Gherkin first.
+2. **Write the tests next**, and show them before implementing.
+3. **Run them and confirm they fail** for the expected reason. A test that has
+   never been red has not been tested.
+4. **Implement** the minimum that passes.
+5. **Conventional commits**: `feat(scope):`, `fix(security):`, `chore:`, `docs:`.
 
-### Ward 0 – Skeleton, tooling and health checks
+### Database work is different
 
-Goal: a clean, testable project skeleton with one trivial passing feature.
+`npm test` mocks Supabase entirely — it would pass against a database with row
+level security switched off. Anything touching policies, grants or constraints
+must be asserted in `supabase/tests/` and run with `npm run test:rls`.
 
-**BDD feature (`specs/ward-0-healthcheck.feature`):**
+Verify the guard too, not only the code: break the thing on purpose and confirm
+the suite names the broken guarantee. Several defects here were found exactly
+that way.
 
-```gherkin
-Feature: Project healthcheck
-  In order to verify the project is correctly set up
-  As a developer
-  I want a simple healthcheck test to pass
+### Commands
 
-  Scenario: Jest test suite runs successfully
-    Given the project dependencies are installed
-    When I run the test suite
-    Then all tests should pass
+```bash
+npm test              # Jest
+npm run test:rls      # RLS suite against a real PostgreSQL (needs PG 15+)
+npm run check:privacy # Dependency allowlist + network access guards
+npm run lint
+npm run typecheck
 ```
 
-Tasks:
+### When something is unclear
 
-* Create Expo React Native app (TypeScript).
-* Configure:
+Ask before building — especially anything touching RLS, where a wrong guess
+produces a data leak rather than an error message.
 
-  * Jest + React Native Testing Library
-  * ESLint + Prettier
-* Add CI config (GitHub Actions) running:
-
-  * `npm run lint`
-  * `npm test`
-* Add one trivial test (e.g. `adds 1 + 1`) mapped to the feature above.
-
-### Ward 1 – Auth & "empty app shell"
-
-Goal: User can authenticate and see an empty "My Groups" screen.
-
-**Feature (`specs/ward-1-auth-and-shell.feature`):**
-
-```gherkin
-Feature: Authentication and basic app shell
-  In order to use the app safely
-  As a user
-  I want to sign in and see my groups
-
-  Scenario: First-time user signs up
-    Given I open the app for the first time
-    When I choose to sign up with email and password
-    And I confirm my email if required
-    Then I should be signed in
-    And I should see an empty list of groups
-
-  Scenario: Returning user
-    Given I have already signed in before
-    When I open the app
-    Then I should be taken directly to the groups screen
-```
-
-Tasks:
-
-* Integrate Supabase Auth (email/password is enough for v1).
-* Add:
-
-  * `AuthGate` component
-  * Navigation stack (Auth stack + App stack)
-* Add tests:
-
-  * Domain/auth tests mocking Supabase client
-  * Screen tests verifying:
-
-    * unauthenticated user sees login screen
-    * authenticated user sees groups screen
-
-### Ward 2 – Groups: create and join
-
-Goal: User can create a group and join a group via invite code. Simple list UI.
-
-**Feature (`specs/ward-2-groups.feature`):**
-
-```gherkin
-Feature: Groups
-  In order to share my location with people I trust
-  As a user
-  I want to create and join groups
-
-  Scenario: Create a new group
-    Given I am signed in
-    And I am on the groups screen
-    When I create a group named "Family"
-    Then I should see "Family" in my groups list
-    And I should be the owner of that group
-
-  Scenario: Join a group via invite code
-    Given there is a group with an invite code
-    And I am signed in
-    When I enter a valid invite code
-    Then I should be added to that group
-    And the group should appear in my groups list
-
-  Scenario: Invalid invite code
-    Given I am on the join group screen
-    When I enter an invalid invite code
-    Then I should see an error message
-    And I should not join any group
-```
-
-Tasks:
-
-* DB tables + migrations (Supabase):
-
-  * `groups`, `group_members`, `invites`
-* RLS policies so users only see their own groups.
-* Group list screen + "Create group" & "Join by code" flow.
-* Tests:
-
-  * Domain tests: group creation, invite code validation (mocking Supabase).
-  * Screen tests: user flows for create/join/invalid.
-
-### Ward 3 – Location sharing (basic, manual updates)
-
-Goal: Group members can **manually** update and view last known location (no background yet).
-
-**Feature (`specs/ward-3-location-basic.feature`):**
-
-```gherkin
-Feature: Basic location sharing
-  In order to know roughly where my group members are
-  As a group member
-  I want to share my last known location and see others on a map
-
-  Scenario: Enable location sharing
-    Given I am a member of a group
-    When I enable location sharing for that group
-    Then the app should request location permission
-    And my last known location should be sent to the backend
-
-  Scenario: View members on the map
-    Given location sharing is enabled for some members
-    When I open the group map screen
-    Then I should see markers for each member with a last known location
-    And I should see when each member was last seen
-
-  Scenario: Deny location permission
-    Given I have not granted location permissions
-    When I try to enable location sharing
-    And I deny the permission request
-    Then location sharing should remain disabled
-    And I should see a clear explanation of why
-```
-
-Tasks:
-
-* Location service using Expo Location:
-
-  * Wrap in a testable module (`LocationService`) with an interface.
-* DB:
-
-  * `member_latest_location` or `locations` with a view for latest per member.
-* Map screen for a single group (simple markers).
-* Tests:
-
-  * Domain tests for location toggle logic (no RN/Expo dependencies).
-  * Screen tests mocking `LocationService` and backend.
-
-### Ward 4 – Background location updates
-
-Goal: Location updates periodically in background with minimal battery impact.
-
-**Feature (`specs/ward-4-background-location.feature`):**
-
-```gherkin
-Feature: Background location updates
-  In order to keep locations reasonably up to date
-  As a group member
-  I want my location to update in the background when sharing is enabled
-
-  Scenario: Background updates while sharing is enabled
-    Given I have enabled location sharing for a group
-    When I move around with the app in the background
-    Then my location should be periodically updated in the backend
-    And updates should not happen more frequently than the configured interval
-
-  Scenario: No updates when sharing disabled
-    Given I have disabled location sharing
-    When the background task runs
-    Then no location updates should be sent
-```
-
-Tasks:
-
-* Configure Expo background location task.
-* Centralize config:
-
-  * minimal distance change
-  * minimum interval
-* Guard background updates behind:
-
-  * user logged in
-  * sharing enabled for at least one group.
-* Tests:
-
-  * Domain-level tests for "shouldSendUpdate" decision logic.
-  * Integration tests with mocked background task runner.
-
-### Ward 5 – SOS (panic button)
-
-Goal: User can trigger SOS, which logs the event and notifies group members.
-
-**Feature (`specs/ward-5-sos.feature`):**
-
-```gherkin
-Feature: SOS panic button
-  In order to alert my group in an emergency
-  As a group member
-  I want to press an SOS button and notify everyone
-
-  Scenario: Trigger SOS
-    Given I am signed in and have location sharing enabled
-    When I press the SOS button
-    Then an SOS event should be recorded with my current location
-    And all members of my groups should receive a push notification
-
-  Scenario: SOS without location permission
-    Given I have not granted location permissions
-    When I press the SOS button
-    Then an SOS event should still be recorded (without location)
-    And all members should still be notified
-```
-
-Tasks:
-
-* DB:
-
-  * `sos_events` table (user_id, group_id, timestamp, lat, lng nullable)
-* Supabase Edge Function to send push notifications.
-* UI: prominent SOS button (confirm dialog to prevent accidental triggers).
-* Tests:
-
-  * Domain tests for SOS event creation logic.
-  * Screen tests for SOS flow (mocking notification service).
-
-### Ward 6 – Privacy controls
-
-Goal: User can pause sharing and see who has access to their location.
-
-**Feature (`specs/ward-6-privacy.feature`):**
-
-```gherkin
-Feature: Privacy controls
-  In order to maintain control over my privacy
-  As a user
-  I want to see who can see me and pause sharing when needed
-
-  Scenario: View who can see my location
-    Given I am a member of multiple groups
-    When I open the privacy settings
-    Then I should see a list of all users who can see my location
-    And the list should be grouped by group name
-
-  Scenario: Pause location sharing
-    Given I am sharing my location with a group
-    When I pause location sharing
-    Then my location should no longer be visible to group members
-    And background updates should stop
-
-  Scenario: Resume location sharing
-    Given I have paused location sharing
-    When I resume location sharing
-    Then my location should become visible again
-    And background updates should resume
-```
-
-Tasks:
-
-* Privacy settings screen showing:
-
-  * List of groups where sharing is enabled
-  * List of people who can see user's location
-* Pause/resume toggle (per-group or global).
-* Tests:
-
-  * Domain tests for pause/resume logic.
-  * Screen tests for privacy settings UI.
+### One ward per pull request.
 
 ---
 
-## 5. How to work with me
-
-When I ask you to work on a ward or feature:
-
-1. **Start with the feature file** – show me the Gherkin scenarios first.
-2. **Write tests** – show me the test code before implementation.
-3. **Implement** – only after tests are in place.
-4. **Commit messages** – use conventional commits (e.g., `feat(groups): add create group screen`).
-
-If I say "start Ward X", you should:
-
-1. Create/update the feature file.
-2. Create the test files.
-3. Implement the minimal code to pass.
-4. Summarize what was done.
-
-If something is unclear, **ask me before proceeding**.
-
----
-
-## 6. Quality checklist (per ward)
+## 8. Quality checklist
 
 Before considering a ward complete:
 
 - [ ] Feature file exists under `/specs`
-- [ ] All scenarios have corresponding tests
-- [ ] All tests pass (`npm test`)
-- [ ] No lint errors (`npm run lint`)
-- [ ] Code is typed (no `any` unless justified)
-- [ ] No console.log left in production code
-- [ ] README updated if needed
-
----
-
-Let's build something useful, private, and well-tested!
+- [ ] Every scenario has a corresponding test
+- [ ] Tests were seen failing before they passed
+- [ ] `npm test` green
+- [ ] `npm run test:rls` green, if the ward touched the database
+- [ ] `npm run check:privacy` green
+- [ ] `npm run lint` (0 errors) and `npm run typecheck` green
+- [ ] `npm ci` still resolves — regenerate the lockfile when dependencies change
+- [ ] Code is typed; no `any` without a justification in a comment
+- [ ] No `console.log` in production code
+- [ ] PRIVACY.md updated if what is stored, who can read it, or how long it is
+      kept has changed
+- [ ] README updated if a new command or setup step exists
