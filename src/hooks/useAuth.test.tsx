@@ -23,7 +23,9 @@ const mockOnAuthStateChange = jest.fn();
 jest.mock('../services/supabase', () => ({
   supabase: {
     auth: {
-      onAuthStateChange: (callback: (event: string, session: unknown) => void) => {
+      onAuthStateChange: (
+        callback: (event: string, session: unknown) => void
+      ) => {
         mockOnAuthStateChange.mockImplementation(callback);
         return {
           data: { subscription: { unsubscribe: jest.fn() } },

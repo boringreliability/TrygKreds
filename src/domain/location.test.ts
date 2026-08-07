@@ -69,7 +69,11 @@ describe('Location Domain', () => {
       });
       mockSupabaseFrom.mockReturnValue(chainMock);
 
-      const result = await updateMyLocation(mockUserId, mockGroupId, mockCoordinates);
+      const result = await updateMyLocation(
+        mockUserId,
+        mockGroupId,
+        mockCoordinates
+      );
 
       expect(result.success).toBe(true);
       expect(mockSupabaseFrom).toHaveBeenCalledWith('member_locations');
@@ -83,7 +87,11 @@ describe('Location Domain', () => {
       });
       mockSupabaseFrom.mockReturnValue(chainMock);
 
-      const result = await updateMyLocation(mockUserId, mockGroupId, mockCoordinates);
+      const result = await updateMyLocation(
+        mockUserId,
+        mockGroupId,
+        mockCoordinates
+      );
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('Database error');
@@ -96,7 +104,11 @@ describe('Location Domain', () => {
         accuracy: 10,
       };
 
-      const result = await updateMyLocation(mockUserId, mockGroupId, invalidCoordinates);
+      const result = await updateMyLocation(
+        mockUserId,
+        mockGroupId,
+        invalidCoordinates
+      );
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('Invalid coordinates');
@@ -146,7 +158,10 @@ describe('Location Domain', () => {
 
     it('should return locations for group members', async () => {
       mockTables(
-        [locationRow('loc-1', 'user-1', 55.6761), locationRow('loc-2', 'user-2', 55.6762)],
+        [
+          locationRow('loc-1', 'user-1', 55.6761),
+          locationRow('loc-2', 'user-2', 55.6762),
+        ],
         null
       );
 
@@ -178,7 +193,10 @@ describe('Location Domain', () => {
     // Ward 3.3: markers must be labelled with names, not user ids.
     it('should attach display names to each location', async () => {
       mockTables(
-        [locationRow('loc-1', 'user-1', 55.6761), locationRow('loc-2', 'user-2', 55.6762)],
+        [
+          locationRow('loc-1', 'user-1', 55.6761),
+          locationRow('loc-2', 'user-2', 55.6762),
+        ],
         null,
         [
           { id: 'user-1', display_name: 'Mor' },
@@ -244,7 +262,9 @@ describe('Location Domain', () => {
       const result = await enableLocationSharing(mockUserId, mockGroupId);
 
       expect(result.success).toBe(true);
-      expect(mockSupabaseFrom).toHaveBeenCalledWith('location_sharing_settings');
+      expect(mockSupabaseFrom).toHaveBeenCalledWith(
+        'location_sharing_settings'
+      );
     });
 
     it('should handle error when enabling fails', async () => {

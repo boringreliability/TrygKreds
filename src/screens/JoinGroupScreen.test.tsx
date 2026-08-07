@@ -95,7 +95,9 @@ describe('JoinGroupScreen', () => {
     const joinButtons = getAllByText('Join Group');
     fireEvent.press(joinButtons[joinButtons.length - 1]);
 
-    expect(await findByText('You are already a member of this group')).toBeTruthy();
+    expect(
+      await findByText('You are already a member of this group')
+    ).toBeTruthy();
   });
 
   it('should show error for empty invite code', async () => {

@@ -162,7 +162,10 @@ export async function joinGroup(inviteCode: string): Promise<JoinGroupResult> {
 
   if (error) {
     if (error.code === '23505') {
-      return { success: false, error: 'You are already a member of this group' };
+      return {
+        success: false,
+        error: 'You are already a member of this group',
+      };
     }
     // P0002 covers unknown, expired and revoked codes alike -- the server does
     // not distinguish them, so that a caller cannot probe which codes exist.
@@ -228,7 +231,9 @@ export async function getMyGroups(userId: string): Promise<GroupsListResult> {
     } | null;
   }
 
-  const groups: GroupWithRole[] = ((data || []) as unknown as GroupMemberWithGroup[])
+  const groups: GroupWithRole[] = (
+    (data || []) as unknown as GroupMemberWithGroup[]
+  )
     .filter((item) => item.group !== null)
     .map((item) => ({
       ...mapSupabaseGroup(item.group!),

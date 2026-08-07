@@ -123,7 +123,10 @@ export function GroupMapScreen({
         // task". The privacy screen calls the same function.
         const enableResult = await startSharing(user.id, groupId);
         if (!enableResult.success) {
-          Alert.alert('Error', enableResult.error || 'Failed to enable sharing');
+          Alert.alert(
+            'Error',
+            enableResult.error || 'Failed to enable sharing'
+          );
           setIsTogglingSharing(false);
           return;
         }

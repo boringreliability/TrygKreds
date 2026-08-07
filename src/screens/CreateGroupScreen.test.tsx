@@ -31,8 +31,13 @@ describe('CreateGroupScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockGroups.validateGroupName.mockImplementation((name) => {
-      if (!name.trim()) return { isValid: false, error: 'Group name is required' };
-      if (name.length > 50) return { isValid: false, error: 'Group name must be 50 characters or less' };
+      if (!name.trim())
+        return { isValid: false, error: 'Group name is required' };
+      if (name.length > 50)
+        return {
+          isValid: false,
+          error: 'Group name must be 50 characters or less',
+        };
       return { isValid: true };
     });
   });
@@ -71,7 +76,10 @@ describe('CreateGroupScreen', () => {
     fireEvent.press(createButtons[createButtons.length - 1]);
 
     await waitFor(() => {
-      expect(mockGroups.createGroup).toHaveBeenCalledWith('Family', mockUser.id);
+      expect(mockGroups.createGroup).toHaveBeenCalledWith(
+        'Family',
+        mockUser.id
+      );
       expect(mockOnSuccess).toHaveBeenCalled();
     });
   });

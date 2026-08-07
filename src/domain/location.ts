@@ -66,10 +66,7 @@ export interface SimpleResult {
 export function validateCoordinates(coords: LocationCoordinates): boolean {
   const { latitude, longitude } = coords;
   return (
-    latitude >= -90 &&
-    latitude <= 90 &&
-    longitude >= -180 &&
-    longitude <= 180
+    latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180
   );
 }
 
@@ -306,9 +303,7 @@ export async function getMySharingGroupIds(
  * row is permitted by the RLS policy on member_locations even when you are not
  * sharing.
  */
-export async function getMyStoredPositions(
-  userId: string
-): Promise<{
+export async function getMyStoredPositions(userId: string): Promise<{
   success: boolean;
   positions?: Record<string, LastSentPosition>;
   error?: string;

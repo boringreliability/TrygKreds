@@ -84,7 +84,13 @@ describe('Auth Domain', () => {
       };
 
       mockSupabaseAuth.signUp.mockResolvedValue({
-        data: { user: { id: mockUser.id, email: mockUser.email, created_at: mockUser.createdAt } },
+        data: {
+          user: {
+            id: mockUser.id,
+            email: mockUser.email,
+            created_at: mockUser.createdAt,
+          },
+        },
         error: null,
       });
 
@@ -136,7 +142,13 @@ describe('Auth Domain', () => {
       };
 
       mockSupabaseAuth.signInWithPassword.mockResolvedValue({
-        data: { user: { id: mockUser.id, email: mockUser.email, created_at: mockUser.createdAt } },
+        data: {
+          user: {
+            id: mockUser.id,
+            email: mockUser.email,
+            created_at: mockUser.createdAt,
+          },
+        },
         error: null,
       });
 
@@ -202,7 +214,13 @@ describe('Auth Domain', () => {
       };
 
       mockSupabaseAuth.getUser.mockResolvedValue({
-        data: { user: { id: mockUser.id, email: mockUser.email, created_at: mockUser.createdAt } },
+        data: {
+          user: {
+            id: mockUser.id,
+            email: mockUser.email,
+            created_at: mockUser.createdAt,
+          },
+        },
         error: null,
       });
 

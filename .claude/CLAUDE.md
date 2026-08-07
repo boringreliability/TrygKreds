@@ -14,19 +14,19 @@ several of those guarantees are load-bearing in the schema.
 Ward 0–6 are built, including four preparatory wards (3.1–3.4) that were not in
 the original plan. Feature files for every ward live in `/specs`.
 
-| Ward | What it delivered |
-| ---- | ----------------- |
-| 0 | Skeleton, Jest, ESLint, CI |
-| 1 | Supabase auth, app shell |
-| 2 | Groups: create, join by invite code |
-| 3 | Manual location sharing, group map |
-| 3.1 | Toolchain upgrade to Expo SDK 57 / RN 0.86 / React 19 |
-| 3.2 | RLS hardening: recursion, `security_invoker`, invite expiry/rotation |
-| 3.3 | `profiles` and display names |
-| 3.4 | `PRIVACY.md` + CI privacy guards |
-| 4 | Background location updates |
-| 5 | SOS with push notifications |
-| 6 | Privacy controls: who can see me, pause |
+| Ward | What it delivered                                                    |
+| ---- | -------------------------------------------------------------------- |
+| 0    | Skeleton, Jest, ESLint, CI                                           |
+| 1    | Supabase auth, app shell                                             |
+| 2    | Groups: create, join by invite code                                  |
+| 3    | Manual location sharing, group map                                   |
+| 3.1  | Toolchain upgrade to Expo SDK 57 / RN 0.86 / React 19                |
+| 3.2  | RLS hardening: recursion, `security_invoker`, invite expiry/rotation |
+| 3.3  | `profiles` and display names                                         |
+| 3.4  | `PRIVACY.md` + CI privacy guards                                     |
+| 4    | Background location updates                                          |
+| 5    | SOS with push notifications                                          |
+| 6    | Privacy controls: who can see me, pause                              |
 
 Current shape: **335 Jest tests**, **95 RLS assertions** against a real
 PostgreSQL, two CI guards that fail the build.
@@ -150,7 +150,7 @@ src/services/*.ts                  The only place Expo lives.
 to keep it that way. Decision logic belongs there so it can be tested as
 arithmetic rather than through a device.
 
-Rules that span a database change *and* a platform effect go in
+Rules that span a database change _and_ a platform effect go in
 `src/services/sharingControl.ts` — for example "stop the background task only when
 nothing is shared anywhere". That rule was about to live in two screens; keeping
 it in one place is why it is there.
