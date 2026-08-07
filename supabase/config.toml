@@ -179,10 +179,12 @@ enable_anonymous_sign_ins = false
 # Allow/disallow testing manual linking of accounts
 enable_manual_linking = false
 # Passwords shorter than this value will be rejected as weak. Minimum 6, recommended 8 or more.
-minimum_password_length = 6
+# Raised from the CLI's default of 6. A TrygKreds account is a live view of
+# where someone's family is, so a guessed password is not a nuisance.
+minimum_password_length = 8
 # Passwords that do not meet the following requirements will be rejected as weak. Supported values
 # are: `letters_digits`, `lower_upper_letters_digits`, `lower_upper_letters_digits_symbols`
-password_requirements = ""
+password_requirements = "lower_upper_letters_digits"
 
 # Configure passkey sign-ins.
 # [auth.passkey]
@@ -223,9 +225,17 @@ enable_signup = true
 # addresses. If disabled, only the new email is required to confirm.
 double_confirm_changes = true
 # If enabled, users need to confirm their email address before signing in.
-enable_confirmations = false
+# On by default here, against the CLI's default of false. Without it anyone can
+# sign up as someone else's address and be signed in without ever proving they
+# own it -- and in this app an account is a view of other people's locations.
+# The local stack catches these mails in its own inbox, so this costs nothing
+# in development.
+enable_confirmations = true
 # If enabled, users will need to reauthenticate or have logged in recently to change their password.
-secure_password_change = false
+# On by default here, against the CLI's default of false. Without it, anyone
+# holding a live session can change the password and lock the real owner out of
+# an account that shows where their family is.
+secure_password_change = true
 # Controls the minimum amount of time that must pass before sending another signup confirmation or password reset email.
 max_frequency = "1s"
 # Number of characters used in the email OTP.

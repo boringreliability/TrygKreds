@@ -756,7 +756,9 @@ If it now refuses to start with a message naming a variable, that is Task 4 work
 
 Sign up with an email address, then sign in.
 
-Note: Supabase sends a confirmation email by default. If sign-in is blocked pending confirmation, either confirm via the emailed link or turn off email confirmation in Authentication → Providers → Email for this test project.
+Note: Supabase sends a confirmation email by default. Confirm via the emailed link.
+
+Prefer that over turning confirmation off. `supabase/config.toml` deliberately sets `enable_confirmations = true`, against the CLI's default, because without it anyone can sign up as someone else's address and be signed in without proving they own it — and in this app an account is a view of other people's locations. If you do switch it off in the dashboard to unblock a test, switch it back before the project holds anything real, and never carry the change into the committed config.
 
 - [ ] **Step 3: Create a group (Ward 2)**
 
