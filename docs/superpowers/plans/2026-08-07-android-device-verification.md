@@ -682,10 +682,14 @@ module.exports = ({ config }) => ({
 Run:
 
 ```bash
-npx expo config --type public | grep -A3 googleMaps
+npx expo config --type prebuild | grep -A6 "config:"
 ```
 
-Expected: the `apiKey` field shows your real key. If it shows `undefined`, Expo did not load `.env` — check the variable name spelling in both files.
+Expected: an `android.config.googleMaps.apiKey` field showing your real key, and a `env: load .env` line at the top confirming Expo read the file.
+
+Use `--type prebuild`, **not** `--type public`. Expo strips `android.config` out of the public config on purpose, because that is exactly where API keys live and the public config is what gets served in OTA manifests. Against `--type public` this check shows nothing no matter how correct the setup is, which would send you hunting a bug that does not exist.
+
+If the key really is missing, the `env:` line at the top of the output tells you which half is wrong: no `.env` loaded means the file is not being read, while a loaded `.env` without the key means the variable name is misspelled in one of the two files.
 
 - [ ] **Step 5: Verify the config still passes its schema check**
 
