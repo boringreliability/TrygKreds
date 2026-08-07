@@ -97,6 +97,29 @@ npm run check:privacy
   traffic goes through the Supabase client, configured from
   `EXPO_PUBLIC_SUPABASE_URL`.
 
+#### The SOS notification function
+
+SOS push notifications are sent by a Supabase Edge Function in
+`supabase/functions/send-sos-notification/`. It runs with the service role,
+because that is the only thing permitted to read `push_tokens` -- end users hold
+no privilege on that table at all.
+
+```bash
+supabase functions deploy send-sos-notification
+```
+
+It needs no secrets beyond the `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`
+that Supabase injects. Sending also requires an EAS `projectId` in `app.json`
+(`extra.eas.projectId`), since Expo will not mint a push token without one --
+without it the app skips registration rather than failing.
+
+**Not covered by the Jest suite.** It is Deno code with a different runtime, so
+`npm test` cannot execute it. What _is_ enforced mechanically is the
+privacy-relevant part: a test in `src/domain/sos.test.ts` reads the function's
+source and fails if it ever references coordinates, reads `member_locations`, or
+posts to a host other than Expo's push relay. Treat the rest of the function as
+reviewed-not-tested.
+
 ### Linting & Formatting
 
 ```bash

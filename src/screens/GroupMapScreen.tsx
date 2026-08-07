@@ -36,6 +36,7 @@ import {
   stopBackgroundLocationUpdates,
 } from '../services/backgroundLocation';
 import { getMySharingGroupIds } from '../domain/location';
+import { SosButton } from '../components/SosButton';
 
 interface GroupMapScreenProps {
   groupId: string;
@@ -248,6 +249,11 @@ export function GroupMapScreen({
       </View>
 
       <View style={styles.controls}>
+        {/* Ward 5: the most prominent control on the screen, deliberately. */}
+        <View style={styles.sosRow}>
+          <SosButton />
+        </View>
+
         <View style={styles.sharingRow}>
           <View style={styles.sharingInfo}>
             <Text style={styles.sharingLabel}>Share my location</Text>
@@ -358,6 +364,9 @@ const styles = StyleSheet.create({
   },
   map: {
     flex: 1,
+  },
+  sosRow: {
+    marginBottom: 16,
   },
   controls: {
     padding: 16,

@@ -107,7 +107,18 @@ const ALLOWED_RUNTIME_DEPENDENCIES = {
     network: 'none',
   },
 
-  // --- The one third-party network path -----------------------------------
+  'expo-device': {
+    reason:
+      'Reports whether the app is running on a physical device. Expo push tokens cannot be minted on a simulator, so registration is skipped there. Reads local device characteristics only; nothing is transmitted.',
+    network: 'none',
+  },
+
+  // --- Third-party network paths, each disclosed in PRIVACY.md -------------
+  'expo-notifications': {
+    reason:
+      'SOS push notifications. Minting a push token contacts Expo\'s servers, and delivery goes through Expo\'s relay to Apple and Google, so Expo sees the token and the notification content. The SOS payload therefore carries no coordinates -- only who and which group. Disclosed under "Limitations" in PRIVACY.md.',
+    network: 'thirdParty',
+  },
   'react-native-maps': {
     reason:
       'Renders the group map. Uses MapKit on iOS and Google Maps on Android, so tiles are fetched from Apple or Google and the viewport is visible to them. Disclosed under "Limitations" in PRIVACY.md. Carries no analytics SDK of its own.',

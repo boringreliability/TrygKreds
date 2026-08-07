@@ -20,7 +20,9 @@ a limitation rather than a guarantee, it is listed under
 2. **No location history.** One row per user per group, overwritten in place --
    including by background updates. There is no table that could answer "where
    was she last Tuesday?", because the old value is gone the moment a new one
-   arrives.
+   arrives. The single exception is an SOS you send deliberately, which is kept
+   as a record and which you can delete; see
+   [`sos_events`](#sos_events--the-one-retained-position).
 3. **Turning sharing off deletes your position.** It is not merely hidden behind
    a policy. A position sitting in the database is a position sitting in the
    database.
@@ -138,11 +140,62 @@ who is currently sharing.
 
 **Retention:** until you leave the group or delete the account.
 
+### `sos_events` -- the one retained position
+
+| Field                                          | Why                         |
+| ---------------------------------------------- | --------------------------- |
+| `user_id`, `group_id`                          | Who raised the alarm, where |
+| `latitude`, `longitude`, `accuracy` (nullable) | Where they were, if known   |
+| `created_at`                                   | When                        |
+
+This is the one place TrygKreds keeps a position beyond the latest one, and it is
+worth being blunt about: a table of SOS events with coordinates and timestamps
+**is** a sparse location history. It is here because an emergency record that
+vanishes is useless -- if you press SOS and later need to show someone where you
+were, that has to still exist.
+
+Three things bound it. It is only ever written when you deliberately press the
+button, never automatically. The coordinates are nullable, so an SOS raised
+without location permission holds none. And you can delete your own events, so a
+false alarm need not stay a permanent record of where you were.
+
+**Who can read it:** members of the group it was raised in. An alert nobody can
+see is not an alert. Nobody outside the group can read it, and nobody can edit
+one -- there is no UPDATE policy, so a recorded alert cannot be quietly moved.
+Asserted in `supabase/tests/05_sos_test.sql`.
+
+**Retention:** until you delete the event, leave the group, or delete your
+account.
+
+### `push_tokens` -- sealed
+
+| Field                      | Why                             |
+| -------------------------- | ------------------------------- |
+| `user_id`                  | Whose device                    |
+| `token`                    | Where to deliver a notification |
+| `platform`                 | iOS, Android or web             |
+| `created_at`, `updated_at` | Bookkeeping                     |
+
+A push token identifies a single app install, which makes it a device identifier
+-- so this table is closed harder than any other.
+
+**Who can read it:** nothing except the notification function, which runs with the
+service role. End users hold **no privilege on the table at all**: not select, not
+insert, not update, not delete. Registration goes through a `SECURITY DEFINER`
+function that derives the owner from the session, so a token cannot be registered
+against someone else's account. Not even you can read your own token back -- which
+is why the app re-registers on every start rather than checking what is stored.
+Asserted in `supabase/tests/05_sos_test.sql`.
+
+**Retention:** until you sign out on that device, or delete your account.
+
 ## What is never stored
 
 - Location history, tracks, or traces of any kind.
 - Speed, driving behaviour, phone-usage or battery statistics.
-- Device identifiers, advertising IDs, push tokens for analytics purposes.
+- Device identifiers or advertising IDs. A push token is stored only to deliver
+  SOS alerts, is never used to identify or track you, and is readable by
+  nothing but the function that sends them.
 - Contact lists, photos, calendars, or anything else outside the list above.
 - Any copy of your email address outside `auth.users`.
 
@@ -164,6 +217,10 @@ request, and fail the build rather than warn:
 | Background updates cannot accumulate a history   | `supabase/tests/04_no_history_test.sql`               |
 | No table looks like a location history           | `supabase/tests/04_no_history_test.sql`               |
 | Background work stops when signed out            | `src/domain/backgroundLocationSync.test.ts`           |
+| SOS events are visible only inside the group     | `supabase/tests/05_sos_test.sql`                      |
+| An SOS cannot be forged or edited                | `supabase/tests/05_sos_test.sql`                      |
+| Push tokens are unreadable, even by their owner  | `supabase/tests/05_sos_test.sql`                      |
+| SOS notifications carry no coordinates           | `src/domain/sos.test.ts`, `supabase/functions/*.test` |
 
 The row level security tests run against a real PostgreSQL instance, not against
 mocks. This matters: the application test suite mocks Supabase entirely, so it
@@ -183,6 +240,16 @@ Things this document will not pretend about.
   their privacy policy rather than this one. This is the one third-party network
   path in the app. It is the cost of showing a map at all; a self-hosted tile
   source would remove it and is a legitimate future change.
+- **Push notifications pass through Expo, Apple and Google.** SOS alerts are
+  delivered with `expo-notifications`. Minting a push token contacts Expo's
+  servers, and delivery goes through Expo's relay to Apple's and Google's push
+  services (`exp.host`, then Apple's and Google's own endpoints). Those parties
+  therefore see that a notification was sent, to which device, and its text -- under their privacy policies, not this one. This is why
+  the SOS payload deliberately carries **no coordinates**: it names the sender and
+  the group, and recipients open the app to read the position from your database,
+  where row level security still applies. A self-hosted push setup using Firebase
+  and APNs directly would remove Expo from the path, and is a legitimate future
+  change. If you never press SOS, no notification is ever sent.
 - **Device location on Android may be network-assisted.** The OS location
   provider can use Google Play Services to resolve a position from nearby
   networks. That happens below this app, and applies to every app that asks for

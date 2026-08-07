@@ -12,6 +12,10 @@ import * as auth from '../domain/auth';
 
 // Mock the auth domain
 jest.mock('../domain/auth');
+// Ward 5: the provider registers this device for SOS alerts when a session
+// exists. That is not what these tests are about, and the real implementation
+// would reach into expo-notifications.
+jest.mock('../services/notifications');
 const mockAuth = auth as jest.Mocked<typeof auth>;
 
 // Mock supabase auth state change listener
