@@ -1,0 +1,813 @@
+# Android Device Verification Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Get TrygKreds running on a physical Android phone and verify Ward 1–3 by hand, against a real Supabase backend.
+
+**Architecture:** Four stages, ordered so each can fail for exactly one reason. First the app on the phone with no backend at all, which isolates the native build. Then a Supabase cloud project. Then configuration validation, built test-first, which turns a missing backend from a quiet warning into a refusal to start. Then the smoke test.
+
+**Tech Stack:** Expo SDK 57, React Native 0.86, TypeScript 6, Jest + React Native Testing Library v13, Supabase (Postgres, Auth), `react-native-maps`, Android SDK with build-tools 36.1.0 and JDK 21.
+
+## Global Constraints
+
+- **Node 22+.** `@supabase/supabase-js` declares `engines >=22.0.0` and needs the global `WebSocket` Node gained in 22. On Node 20 it throws at module load, so every suite importing it fails before a single test runs.
+- **No new runtime dependency.** Adding one means adding it to the allowlist in `scripts/check-dependencies.js` with a reason and its network behaviour, or the build fails. This plan adds none. Do not add `expo-dev-client`.
+- **`src/domain/*.ts` may import Supabase only** — no `expo-*`, no `react-native`. `src/services/*.ts` is the only place Expo lives.
+- **Conventional commits:** `feat(scope):`, `fix(security):`, `chore:`, `docs:`.
+- **Prettier** covers `**/*.{ts,tsx,js,jsx,json,md}`. Run `npx prettier --write` on files you create before committing.
+- **Quality gates:** `npm test`, `npm run lint` (0 errors), `npm run typecheck`, `npm run check:privacy` must all be green before any commit that touches code.
+- **`npm run test:rls` is not run in this plan.** Nothing here touches the database schema, policies or grants.
+- **PRIVACY.md needs no update.** Map tiles are already a disclosed exception, and nothing new is stored.
+
+---
+
+## File Structure
+
+| File                                       | Responsibility                                                                               |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------- |
+| `.gitignore`                               | Modified. Adds `/android` and `/ios` so generated native projects stay out of git.           |
+| `.env.example`                             | Created. Names the variables a developer must set, with no real values. Committed.           |
+| `.env`                                     | Created locally, never committed. Holds the real Supabase URL, anon key and Google Maps key. |
+| `specs/ward-6-1-config-validation.feature` | Created. The Gherkin for configuration validation.                                           |
+| `src/config/env.ts`                        | Rewritten. Exports the pure `readConfig(env)` plus the `config` it produces.                 |
+| `src/config/env.test.ts`                   | Created. Unit tests for `readConfig`.                                                        |
+| `tests/env.ts`                             | Created. Sets the Expo public variables before any test module loads.                        |
+| `jest.config.js`                           | Modified. Registers `tests/env.ts` via `setupFiles`.                                         |
+| `app.config.js`                            | Created. Layers the Google Maps key from the environment over `app.json`.                    |
+
+`app.json` is **not** modified. It stays the readable declarative base; `app.config.js` receives it already parsed and adds exactly one thing.
+
+---
+
+## Task 1: Get the app onto the phone with no backend
+
+Stage 1 of the design. The app will not be able to sign in, and that is the expected outcome — it still points at nothing. What this proves is that the native build, autolinking, the config plugins and the permissions in the manifest all work.
+
+**Files:**
+
+- Modify: `.gitignore`
+
+**Interfaces:**
+
+- Consumes: nothing.
+- Produces: a debug build installed on the device, and a repository where `expo prebuild` leaves no tracked files behind.
+
+- [ ] **Step 1: Confirm the phone is connected**
+
+Run:
+
+```bash
+~/Library/Android/sdk/platform-tools/adb devices -l
+```
+
+Expected: one line under `List of devices attached` ending in `device`. If it says `unauthorized`, accept the debugging prompt on the phone. If the list is empty, USB debugging is off: Settings → About phone → tap Build number seven times → Developer options → USB debugging.
+
+Do not continue until a device appears. Every later step in this task depends on it.
+
+- [ ] **Step 2: Keep generated native projects out of git**
+
+Add to `.gitignore`, directly under the existing `# Native builds` heading:
+
+```gitignore
+# Generated by `expo prebuild`. app.json is the source of truth; committing
+# these means config plugins quietly stop taking effect, because the checked-in
+# native files win.
+/android
+/ios
+```
+
+- [ ] **Step 3: Generate the native Android project**
+
+Run:
+
+```bash
+npx expo prebuild --platform android
+```
+
+Expected: an `android/` directory appears.
+
+- [ ] **Step 4: Verify the generated project is not tracked**
+
+Run:
+
+```bash
+git status --short
+```
+
+Expected: `.gitignore` is the only modified file. If `android/` shows up, Step 2 did not take effect — fix it before continuing, because otherwise the next commit drags thousands of generated files in.
+
+- [ ] **Step 5: Confirm the permissions actually reached the manifest**
+
+Run:
+
+```bash
+grep -c "ACCESS_BACKGROUND_LOCATION\|FOREGROUND_SERVICE_LOCATION" android/app/src/main/AndroidManifest.xml
+```
+
+Expected: `2`. This is the real check that the `expo-location` config plugin ran with `isAndroidBackgroundLocationEnabled` — Ward 4 cannot work without it, and finding out now is much cheaper than finding out during a background-location test.
+
+- [ ] **Step 6: Build and install on the device**
+
+Run:
+
+```bash
+npx expo run:android
+```
+
+Expected: Gradle builds, the app installs, Metro starts, and the app opens on the phone. The first build takes several minutes.
+
+- [ ] **Step 7: Confirm what you see**
+
+On the phone: the app should show the login screen. Attempting to sign in should fail with a network error.
+
+That failure is the pass condition for this task. It means the JavaScript bundle loaded, navigation works, and the only thing missing is a backend.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add .gitignore
+git commit -m "chore: keep generated native projects out of git
+
+expo prebuild generates android/ and ios/ from app.json. Committing them
+means config plugins quietly stop taking effect, because the checked-in
+native files win over the config that produced them."
+```
+
+---
+
+## Task 2: Provision Supabase cloud and configure the app
+
+Stage 2. This task ends with a backend that exists and an `.env` that points at it. It deliberately does not deploy the Edge Function — that belongs to Ward 5.
+
+**Files:**
+
+- Create: `.env.example` (committed)
+- Create: `.env` (never committed; `.gitignore` already covers it)
+
+**Interfaces:**
+
+- Consumes: nothing from Task 1.
+- Produces: `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY` and `GOOGLE_MAPS_API_KEY` in `.env`. Tasks 4 and 5 read these names exactly.
+
+- [ ] **Step 1: Create the Supabase project**
+
+In the Supabase dashboard, create a new project. The free tier allows two active projects per organisation and pauses a project after roughly a week of inactivity, so an existing paused project may need restoring or deleting first.
+
+Note the project reference, the project URL, and the `anon` public key from Project Settings → API.
+
+- [ ] **Step 2: Apply the migrations**
+
+Run, replacing `<project-ref>`:
+
+```bash
+npx supabase link --project-ref <project-ref>
+npx supabase db push
+```
+
+`npx` is used deliberately so the Supabase CLI is not installed globally — it is a tool for this task, not a dependency of the project.
+
+Expected: all five migrations in `supabase/migrations/` apply in order.
+
+- [ ] **Step 3: Verify the schema actually landed**
+
+Run:
+
+```bash
+npx supabase db push --dry-run
+```
+
+Expected: it reports no pending migrations. If it lists migrations, Step 2 did not complete.
+
+- [ ] **Step 4: Create the committed example file**
+
+Create `.env.example`:
+
+```bash
+# Copy this file to .env and fill in the values. .env is not committed.
+#
+# The two EXPO_PUBLIC_ values are inlined into the app bundle at build time.
+# That is deliberate: the anon key is meant to be public, and row level
+# security is what actually protects the data. Changing them means restarting
+# Metro, not just editing this file.
+#
+# Both come from your Supabase project: Project Settings -> API.
+EXPO_PUBLIC_SUPABASE_URL=https://your-project-ref.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=your-anon-public-key
+
+# Read by app.config.js at build time, not shipped as an EXPO_PUBLIC value.
+# react-native-maps renders through Google Maps on Android -- the only provider
+# available there -- and the map is a grey surface without this. Restrict the
+# key by package name (com.trygkreds.app) and signing certificate in the Google
+# Cloud console; that restriction is what protects it, not secrecy.
+GOOGLE_MAPS_API_KEY=your-android-maps-key
+```
+
+- [ ] **Step 5: Create the real local file**
+
+```bash
+cp .env.example .env
+```
+
+Then edit `.env` and replace all three values with the real ones. Leave `GOOGLE_MAPS_API_KEY` for now if the Google Cloud key does not exist yet — Task 5 covers obtaining it, and nothing before Task 5 reads it.
+
+- [ ] **Step 6: Verify .env is not tracked**
+
+Run:
+
+```bash
+git status --short
+```
+
+Expected: `.env.example` is untracked, `.env` is not listed at all. If `.env` appears, stop — `.gitignore` is wrong and committing would publish the key.
+
+- [ ] **Step 7: Commit**
+
+```bash
+npx prettier --write .env.example 2>/dev/null || true
+git add .env.example
+git commit -m "chore: document the environment variables the app needs
+
+.env.example names what has to be set, with no real values. The two
+EXPO_PUBLIC_ variables are inlined into the bundle at build time, which is
+why changing them means restarting Metro."
+```
+
+---
+
+## Task 3: Configuration validation — feature file and the pure function
+
+Stage 3a, test-first. `readConfig` is a pure function taking a plain object, so these are ordinary function tests: no environment to mutate, no module registry to reset, the same answer on every machine. That is the same reason `src/domain/backgroundLocation.ts` has zero imports.
+
+**Files:**
+
+- Create: `specs/ward-6-1-config-validation.feature`
+- Create: `src/config/env.test.ts`
+- Modify: `src/config/env.ts`
+
+**Interfaces:**
+
+- Consumes: the variable names from Task 2.
+- Produces:
+  - `export type AppConfig = { readonly supabaseUrl: string; readonly supabaseAnonKey: string; readonly appName: string; readonly appVersion: string }`
+  - `export function readConfig(env: { EXPO_PUBLIC_SUPABASE_URL?: string; EXPO_PUBLIC_SUPABASE_ANON_KEY?: string }): AppConfig` — returns a valid config or throws.
+  - `export const config: AppConfig` — unchanged name, so `src/services/supabase.ts` needs no edit.
+
+- [ ] **Step 1: Write the feature file**
+
+Create `specs/ward-6-1-config-validation.feature`:
+
+```gherkin
+Feature: The app refuses to run half-configured
+  In order to trust what I see on a device
+  As someone verifying TrygKreds on real hardware
+  I want a missing Supabase configuration to stop the app rather than be papered over
+
+  # src/config/env.ts used to fall back to https://placeholder.supabase.co and
+  # write a warning to the console. On a phone that produces an app which starts,
+  # renders, and then fails at every request -- a failure that looks like broken
+  # background location, or a permissions problem, or anything except what it is.
+  #
+  # Verified by: src/config/env.test.ts.
+
+  Scenario: A valid configuration is accepted
+    Given EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY are both set
+    When the configuration is read
+    Then it should return the URL and the key unchanged
+
+  Scenario: A missing variable stops the app
+    Given EXPO_PUBLIC_SUPABASE_URL is not set
+    When the configuration is read
+    Then it should fail
+    And the message should name EXPO_PUBLIC_SUPABASE_URL
+    And it should say where to get the value
+
+  Scenario: A blank variable is treated as missing
+    # An empty value in .env is easy to write and impossible to see.
+    Given EXPO_PUBLIC_SUPABASE_ANON_KEY is set to whitespace
+    When the configuration is read
+    Then it should fail
+
+  Scenario: The old placeholder values are rejected
+    Given EXPO_PUBLIC_SUPABASE_URL is set to the old placeholder
+    When the configuration is read
+    Then it should fail
+    And the message should say it is still the placeholder
+
+  Scenario: A value that is not a URL is rejected
+    Given EXPO_PUBLIC_SUPABASE_URL is set to a project reference without a scheme
+    When the configuration is read
+    Then it should fail
+    And the message should show what a correct URL looks like
+
+  Scenario: There is no fallback left
+    # Behavioural rather than decorative: if anyone reintroduces a default,
+    # reading an empty environment stops failing and this scenario goes red.
+    Given no Supabase variables are set at all
+    When the configuration is read
+    Then it should fail rather than return a default
+```
+
+- [ ] **Step 2: Write the failing tests**
+
+Create `src/config/env.test.ts`:
+
+```ts
+import { readConfig } from './env';
+
+/**
+ * readConfig takes a plain object rather than reading process.env itself, so
+ * these are ordinary function tests: nothing global to mutate, nothing to
+ * restore afterwards, and the same answer on every machine.
+ */
+describe('readConfig', () => {
+  const valid = {
+    EXPO_PUBLIC_SUPABASE_URL: 'https://abcdefghijkl.supabase.co',
+    EXPO_PUBLIC_SUPABASE_ANON_KEY: 'a-real-looking-anon-key',
+  };
+
+  it('should return the configured values', () => {
+    expect(readConfig(valid)).toMatchObject({
+      supabaseUrl: 'https://abcdefghijkl.supabase.co',
+      supabaseAnonKey: 'a-real-looking-anon-key',
+    });
+  });
+
+  it('should fail when the URL is missing, and name it', () => {
+    expect(() =>
+      readConfig({ ...valid, EXPO_PUBLIC_SUPABASE_URL: undefined })
+    ).toThrow(/EXPO_PUBLIC_SUPABASE_URL/);
+  });
+
+  it('should fail when the anon key is missing, and name it', () => {
+    expect(() =>
+      readConfig({ ...valid, EXPO_PUBLIC_SUPABASE_ANON_KEY: undefined })
+    ).toThrow(/EXPO_PUBLIC_SUPABASE_ANON_KEY/);
+  });
+
+  it('should say where to get the value', () => {
+    expect(() => readConfig({})).toThrow(/Supabase project settings/);
+  });
+
+  it('should treat whitespace as missing', () => {
+    expect(() =>
+      readConfig({ ...valid, EXPO_PUBLIC_SUPABASE_ANON_KEY: '   ' })
+    ).toThrow(/EXPO_PUBLIC_SUPABASE_ANON_KEY/);
+  });
+
+  it('should reject the old placeholder URL', () => {
+    expect(() =>
+      readConfig({
+        ...valid,
+        EXPO_PUBLIC_SUPABASE_URL: 'https://placeholder.supabase.co',
+      })
+    ).toThrow(/placeholder/);
+  });
+
+  it('should reject the old placeholder anon key', () => {
+    expect(() =>
+      readConfig({
+        ...valid,
+        EXPO_PUBLIC_SUPABASE_ANON_KEY: 'placeholder-anon-key',
+      })
+    ).toThrow(/placeholder/);
+  });
+
+  it('should reject a URL without a scheme', () => {
+    expect(() =>
+      readConfig({
+        ...valid,
+        EXPO_PUBLIC_SUPABASE_URL: 'abcdefghijkl.supabase.co',
+      })
+    ).toThrow(/https:\/\/<project-ref>\.supabase\.co/);
+  });
+
+  it('should fail rather than return a default when nothing is set', () => {
+    expect(() => readConfig({})).toThrow();
+  });
+});
+```
+
+- [ ] **Step 3: Run the tests and confirm they fail for the right reason**
+
+Run:
+
+```bash
+npx jest src/config/env.test.ts
+```
+
+Expected: FAIL. Every test errors with something like `(0, _env.readConfig) is not a function`, because `readConfig` does not exist yet.
+
+If instead the suite fails on a module-load error, stop and read it — that is a different problem from the one these tests are for.
+
+- [ ] **Step 4: Show the tests to the user and wait for approval**
+
+The project's method requires this. Show the feature file and the tests, and wait for the user to say "godkendt" before writing any implementation.
+
+- [ ] **Step 5: Write the implementation**
+
+Replace the whole contents of `src/config/env.ts`:
+
+```ts
+/**
+ * Environment configuration.
+ *
+ * Values come from EXPO_PUBLIC_* variables, which Expo inlines into the bundle
+ * at build time. They are public by design: the anon key is meant to ship, and
+ * row level security is what actually protects the data.
+ *
+ * Missing configuration is a hard failure. This file used to fall back to a
+ * placeholder URL and write a console warning, which meant the app started
+ * cleanly on a device while nothing worked -- the failure looked like broken
+ * background location, or a permissions problem, or anything except what it was.
+ */
+
+export type AppConfig = {
+  readonly supabaseUrl: string;
+  readonly supabaseAnonKey: string;
+  readonly appName: string;
+  readonly appVersion: string;
+};
+
+/**
+ * The values the old fallback used. Rejected explicitly so a copied .env cannot
+ * quietly revive the behaviour this file exists to remove.
+ */
+const PLACEHOLDERS = [
+  'https://placeholder.supabase.co',
+  'placeholder-anon-key',
+];
+
+/**
+ * A deliberately simple check rather than `new URL()`. React Native's URL
+ * implementation has historically been incomplete, and this function is meant to
+ * behave like arithmetic: the same answer everywhere, with no platform behind it.
+ */
+const LOOKS_LIKE_A_URL = /^https?:\/\/[^\s/]+/;
+
+function required(value: string | undefined, name: string): string {
+  const trimmed = value?.trim() ?? '';
+
+  if (trimmed === '') {
+    throw new Error(
+      `${name} is not set. Copy .env.example to .env and fill in the values from your Supabase project settings.`
+    );
+  }
+
+  if (PLACEHOLDERS.includes(trimmed)) {
+    throw new Error(
+      `${name} is still the placeholder value. Replace it with the real value from your Supabase project settings.`
+    );
+  }
+
+  return trimmed;
+}
+
+export function readConfig(env: {
+  EXPO_PUBLIC_SUPABASE_URL?: string;
+  EXPO_PUBLIC_SUPABASE_ANON_KEY?: string;
+}): AppConfig {
+  const supabaseUrl = required(
+    env.EXPO_PUBLIC_SUPABASE_URL,
+    'EXPO_PUBLIC_SUPABASE_URL'
+  );
+  const supabaseAnonKey = required(
+    env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
+    'EXPO_PUBLIC_SUPABASE_ANON_KEY'
+  );
+
+  if (!LOOKS_LIKE_A_URL.test(supabaseUrl)) {
+    throw new Error(
+      `EXPO_PUBLIC_SUPABASE_URL is not a URL: "${supabaseUrl}". It should look like https://<project-ref>.supabase.co.`
+    );
+  }
+
+  return {
+    supabaseUrl,
+    supabaseAnonKey,
+    appName: 'TrygKreds',
+    appVersion: '1.0.0',
+  };
+}
+
+export const config: AppConfig = readConfig({
+  // Referenced statically on purpose. Expo replaces `process.env.EXPO_PUBLIC_X`
+  // textually at build time, so a dynamic lookup such as process.env[name] would
+  // be undefined in a real bundle while working fine under Jest.
+  EXPO_PUBLIC_SUPABASE_URL: process.env.EXPO_PUBLIC_SUPABASE_URL,
+  EXPO_PUBLIC_SUPABASE_ANON_KEY: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
+});
+```
+
+- [ ] **Step 6: Run the tests and confirm they pass**
+
+Run:
+
+```bash
+npx jest src/config/env.test.ts
+```
+
+Expected: 9 passed.
+
+- [ ] **Step 7: Do not commit yet**
+
+The full suite is expected to be red at this point: every suite that loads `src/config/env.ts` now throws, because no test sets the variables. Task 4 fixes that. Committing here would leave the repository broken.
+
+---
+
+## Task 4: Make the test suite satisfy the new requirement
+
+Stage 3b. `src/config/env.ts` now throws when the variables are missing, which is the point — but tests still need it to load.
+
+The values are set in a `setupFiles` entry rather than `setupFilesAfterEnv`, because `setupFiles` runs before the test framework and before any module under test is required. This was verified experimentally: a value set there is visible to a module reading `process.env.EXPO_PUBLIC_*`, so Expo's build-time inlining does not pre-empt it under Jest.
+
+**Files:**
+
+- Create: `tests/env.ts`
+- Modify: `jest.config.js`
+
+**Interfaces:**
+
+- Consumes: `src/config/env.ts` from Task 3.
+- Produces: a green suite. Nothing later depends on the names here.
+
+- [ ] **Step 1: Confirm the suite is red for the expected reason**
+
+Run:
+
+```bash
+npm test 2>&1 | tail -20
+```
+
+Expected: multiple suites fail with `EXPO_PUBLIC_SUPABASE_URL is not set`. That is the new behaviour working. If they fail for any other reason, investigate before continuing.
+
+- [ ] **Step 2: Create the test environment file**
+
+Create `tests/env.ts`:
+
+```ts
+/**
+ * Sets the Expo public variables before any test module is required.
+ *
+ * src/config/env.ts throws when they are missing, which is deliberate: it is how
+ * the app refuses to start half-configured. Tests still need it to load, and
+ * this is the earliest place to satisfy that -- `setupFiles` runs before the
+ * test framework and before any module under test.
+ *
+ * The values are fake and never reach a network: every suite that touches
+ * Supabase mocks src/services/supabase.
+ */
+process.env.EXPO_PUBLIC_SUPABASE_URL = 'https://test-project.supabase.co';
+process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY = 'test-anon-key';
+```
+
+- [ ] **Step 3: Register it in the Jest config**
+
+In `jest.config.js`, add a `setupFiles` entry directly above the existing `setupFilesAfterEnv` line:
+
+```js
+  // Runs before the test framework and before any module under test, which is
+  // what src/config/env.ts needs: it throws on missing configuration, so the
+  // variables have to exist before the first import of it.
+  setupFiles: ['<rootDir>/tests/env.ts'],
+```
+
+Leave `setupFilesAfterEnv` as it is. The two are different hooks and both are needed.
+
+- [ ] **Step 4: Run the full suite**
+
+Run:
+
+```bash
+npm test 2>&1 | tail -10
+```
+
+Expected: 24 suites passed, 344 tests passed — the 23 suites and 335 tests that existed before, plus the new `src/config/env.test.ts` with its 9.
+
+- [ ] **Step 5: Run the remaining quality gates**
+
+```bash
+npm run typecheck
+npm run lint
+npm run check:privacy
+```
+
+Expected: typecheck silent, lint 0 errors (2 pre-existing `no-console` warnings in `CreateGroupScreen.tsx` and `JoinGroupScreen.tsx` are expected), privacy checks passed.
+
+- [ ] **Step 6: Format and commit**
+
+```bash
+npx prettier --write src/config/env.ts src/config/env.test.ts tests/env.ts jest.config.js specs/ward-6-1-config-validation.feature
+git add src/config/env.ts src/config/env.test.ts tests/env.ts jest.config.js specs/ward-6-1-config-validation.feature
+git commit -m "feat(config): refuse to start without Supabase configuration
+
+src/config/env.ts fell back to https://placeholder.supabase.co and wrote a
+console warning. On a phone that produces an app which starts, renders, and
+then fails at every request -- a failure that looks like broken background
+location or a permissions problem rather than a missing URL.
+
+The fallback is replaced by readConfig(env), a pure function taking a plain
+object, so it can be tested as arithmetic rather than through the
+environment. It rejects an empty value, the old placeholder values, and a
+URL that does not parse, and every message names the variable and where to
+get the value.
+
+The NODE_ENV !== 'test' escape hatch is gone with it. That branch made the
+validation path the only code here that never ran under test. Jest now sets
+the variables in a setupFiles entry instead, which runs before any module
+under test is required."
+```
+
+---
+
+## Task 5: Supply the Google Maps key without committing it
+
+Stage 4's prerequisite. `GroupMapScreen.tsx` renders `MapView` without a `provider`, which on Android means Google Maps — the only provider available there. Without a key the map is a grey surface, and Ward 3's acceptance would fail on a missing key while looking like a code defect.
+
+**Files:**
+
+- Create: `app.config.js`
+
+**Interfaces:**
+
+- Consumes: `GOOGLE_MAPS_API_KEY` from `.env` (Task 2).
+- Produces: `android.config.googleMaps.apiKey` in the resolved Expo config.
+
+- [ ] **Step 1: Create the Google Cloud key**
+
+In the Google Cloud console: enable the **Maps SDK for Android**, create an API key, and restrict it to the Android package name `com.trygkreds.app` together with the debug signing certificate's SHA-1.
+
+Get the debug SHA-1 with:
+
+```bash
+keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android -keypass android | grep SHA1
+```
+
+The restriction is what protects this key, not secrecy — it ships inside every APK regardless.
+
+- [ ] **Step 2: Put the key in .env**
+
+Set `GOOGLE_MAPS_API_KEY` in `.env` to the real value. `.env` is not committed.
+
+- [ ] **Step 3: Create the dynamic config layer**
+
+Create `app.config.js`:
+
+```js
+/**
+ * Dynamic layer over app.json.
+ *
+ * Expo calls this with app.json already parsed and passed in as `config`, so
+ * app.json stays the readable, declarative source of truth and this file does
+ * exactly one thing: inject the Google Maps key from the environment.
+ *
+ * The key is not committed, which matters in a public repository. It is
+ * restricted by package name and signing certificate in the Google Cloud
+ * console; that restriction is what protects it, since the key ships inside
+ * every APK either way.
+ */
+module.exports = ({ config }) => ({
+  ...config,
+  android: {
+    ...config.android,
+    config: {
+      ...config.android?.config,
+      googleMaps: { apiKey: process.env.GOOGLE_MAPS_API_KEY },
+    },
+  },
+});
+```
+
+- [ ] **Step 4: Verify the key reaches the resolved config**
+
+Run:
+
+```bash
+npx expo config --type prebuild | grep -A6 "config:"
+```
+
+Expected: an `android.config.googleMaps.apiKey` field showing your real key, and a `env: load .env` line at the top confirming Expo read the file.
+
+Use `--type prebuild`, **not** `--type public`. Expo strips `android.config` out of the public config on purpose, because that is exactly where API keys live and the public config is what gets served in OTA manifests. Against `--type public` this check shows nothing no matter how correct the setup is, which would send you hunting a bug that does not exist.
+
+If the key really is missing, the `env:` line at the top of the output tells you which half is wrong: no `.env` loaded means the file is not being read, while a loaded `.env` without the key means the variable name is misspelled in one of the two files.
+
+- [ ] **Step 5: Verify the config still passes its schema check**
+
+Run:
+
+```bash
+npx expo-doctor
+```
+
+Expected: 20/20 checks passed. `app.config.js` must not reintroduce the schema errors that PR #4 removed.
+
+- [ ] **Step 6: Rebuild so the key reaches the manifest**
+
+```bash
+npx expo prebuild --platform android --clean
+npx expo run:android
+```
+
+- [ ] **Step 7: Confirm the key landed in the manifest**
+
+```bash
+grep -A1 "com.google.android.geo.API_KEY" android/app/src/main/AndroidManifest.xml
+```
+
+Expected: the value line shows your key.
+
+- [ ] **Step 8: Format and commit**
+
+```bash
+npx prettier --write app.config.js
+git add app.config.js
+git commit -m "feat(config): read the Google Maps key from the environment
+
+react-native-maps renders through Google Maps on Android -- the only
+provider available there -- so without com.google.android.geo.API_KEY the
+map is a grey surface, and Ward 3 would appear to fail as a code defect.
+
+app.json stays the declarative base and is untouched. app.config.js
+receives it already parsed and adds exactly one field, which keeps the key
+out of git in a public repository. The key is restricted by package name
+and signing certificate, which is what actually protects it."
+```
+
+---
+
+## Task 6: Smoke test Ward 1–3 on the device
+
+Stage 4. Manual, on the phone, in this order. Each step depends on the one before it, so stop at the first failure rather than working around it.
+
+**Files:** none. This task produces a record, not code.
+
+**Interfaces:**
+
+- Consumes: everything from Tasks 1–5.
+- Produces: a verified list of what works on real hardware, and a named defect if something does not.
+
+- [ ] **Step 1: Confirm the app starts with real configuration**
+
+Launch the app. It should reach the login screen with no error.
+
+If it now refuses to start with a message naming a variable, that is Task 4 working correctly — fix `.env` rather than the code.
+
+- [ ] **Step 2: Create an account and sign in (Ward 1)**
+
+Sign up with an email address, then sign in.
+
+Note: Supabase sends a confirmation email by default. Confirm via the emailed link.
+
+Prefer that over turning confirmation off. `supabase/config.toml` deliberately sets `enable_confirmations = true`, against the CLI's default, because without it anyone can sign up as someone else's address and be signed in without proving they own it — and in this app an account is a view of other people's locations. If you do switch it off in the dashboard to unblock a test, switch it back before the project holds anything real, and never carry the change into the committed config.
+
+- [ ] **Step 3: Create a group (Ward 2)**
+
+Create a group. Confirm it appears in the group list and shows an invite code.
+
+- [ ] **Step 4: Join by invite code (Ward 2)**
+
+Sign out, create a second account, and join the group using the invite code from Step 3.
+
+This exercises the `SECURITY DEFINER` redemption path, which exists because row level security cannot express "readable only by someone who already knows the secret". It is the single most likely place for a policy problem to show up on a real client.
+
+- [ ] **Step 5: Share a position manually (Ward 3)**
+
+Grant location permission when prompted, then share your position with the group.
+
+Confirm the permission dialog wording matches what `app.json` declares — this is the first time those strings have been seen on a device.
+
+- [ ] **Step 6: See the position on the map (Ward 3)**
+
+Open the group map. Expected: map tiles render, and a marker appears at your position with a name rather than a raw user id.
+
+A grey rectangle instead of tiles means the Google Maps key is wrong or unrestricted incorrectly, not that the map code is broken.
+
+- [ ] **Step 7: Turn sharing off and confirm the position is gone**
+
+Turn location sharing off, then check in the Supabase dashboard that the row in `member_locations` is deleted rather than merely hidden.
+
+This is a load-bearing privacy invariant: `disableLocationSharing()` performs the deletion itself so no caller can turn sharing off and leave a position behind. It is asserted in `src/domain/location.test.ts` against a mock; this is the first time it is checked against a real database.
+
+- [ ] **Step 8: Record the result**
+
+Update the "Not yet verified" section of `.claude/CLAUDE.md` to say what has now run on a device and what has not. Ward 4 and Ward 5 remain unverified after this task.
+
+Commit:
+
+```bash
+git add .claude/CLAUDE.md
+git commit -m "docs(claude): record what has now been verified on a device
+
+Ward 1-3 have run on physical Android hardware: sign-up, sign-in, group
+creation, invite redemption, manual location sharing, the group map, and
+the deletion that happens when sharing is turned off. Ward 4 and Ward 5
+remain untested on a device."
+```
+
+---
+
+## Out of scope
+
+Ward 4 (background location) and Ward 5 (SOS push) are excluded. Both need setup this plan does not do — FCM credentials, a deployed Edge Function, and a second device — and both fail in ways worth isolating from a first run.
+
+iOS is excluded: verifying push there needs a paid Apple Developer membership.

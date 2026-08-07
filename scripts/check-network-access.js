@@ -48,9 +48,14 @@ const SCANNED_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx']);
  * and it is why this list stays this short.
  */
 const APP_HOSTS = new Set([
-  // Dev-time fallback in src/config/env.ts, used when no Supabase URL is set.
-  // Not a real host.
+  // Appears in src/config/env.ts, in the list of values the validator
+  // rejects. It was the dev-time fallback until that fallback was removed.
+  // Not a real host, and never used as a URL.
   'placeholder.supabase.co',
+  // Fixture host in src/config/env.test.ts, used as the valid value the
+  // config validator must accept. Not a real host, and test files do not
+  // ship in the app binary.
+  'abcdefghijkl.supabase.co',
 ]);
 
 /**
