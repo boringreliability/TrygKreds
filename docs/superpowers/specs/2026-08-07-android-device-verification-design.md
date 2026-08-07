@@ -138,9 +138,25 @@ removed, and the Jest setup sets the two variables to test values instead. This
 closes a divergence between test and production — the validation path is
 currently the only code in the repository that never executes under test.
 
-**Tests.** Unit tests on `readConfig` for each rejected case and the valid one,
-plus a source-reading test that keeps the placeholder strings from returning —
-the same technique `src/domain/sos.test.ts` already uses.
+**Tests.** Unit tests on `readConfig` for each rejected case and the valid one.
+
+An earlier draft of this design also called for a source-reading test to keep the
+placeholder strings from returning, in the style of `src/domain/sos.test.ts`. It
+is not needed here and has been dropped. That technique exists because the Edge
+Function is Deno and cannot be unit-tested at all, whereas `readConfig` is called
+directly: `readConfig({})` throwing _is_ the assertion that no fallback exists. If
+anyone reintroduces a default, that test stops failing and goes red on its own.
+
+**Test setup, verified rather than assumed.** The variables are set in a Jest
+`setupFiles` entry rather than `setupFilesAfterEnv`, because `setupFiles` runs
+before the test framework and before any module under test is required. Whether
+that is early enough was checked with a throwaway spike: a value set there is
+visible to a module reading `process.env.EXPO_PUBLIC_*`, so Expo's build-time
+inlining does not pre-empt it under Jest.
+
+That inlining is still real in a bundle, which is why `env.ts` passes
+`readConfig` an object built from static `process.env.EXPO_PUBLIC_X` references.
+A dynamic lookup would work under Jest and be `undefined` on the device.
 
 ### Stage 4 — smoke test on the device
 
