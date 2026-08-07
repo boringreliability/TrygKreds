@@ -20,6 +20,10 @@ const config = {
   // This buys headroom for slow hardware, not for slow assertions: a genuinely
   // hung test still fails, just later.
   testTimeout: 30000,
+  // Runs before the test framework and before any module under test, which is
+  // what src/config/env.ts needs: it throws on missing configuration, so the
+  // variables have to exist before the first import of it.
+  setupFiles: ['<rootDir>/tests/env.ts'],
   // Sets the async-helper budget; see tests/setup.ts for why it is not the
   // default 1000ms.
   setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],
