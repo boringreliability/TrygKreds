@@ -50,6 +50,29 @@ npm run test:watch
 npm run test:coverage
 ```
 
+#### Row Level Security tests
+
+`npm test` mocks Supabase, so it cannot see a database policy at all -- it would
+pass just as happily against a database with RLS switched off. The privacy
+guarantees are therefore asserted separately, against a real PostgreSQL:
+
+```bash
+npm run test:rls
+```
+
+This applies the real migrations in `supabase/migrations/` to a throwaway
+PostgreSQL cluster and checks that a user cannot read the location of someone
+they share no group with, that a user who has stopped sharing becomes invisible,
+that the views do not bypass the policies, and that invite codes expire, can be
+revoked and can be rotated. See `supabase/tests/`.
+
+Requires PostgreSQL 15+ server binaries (`initdb`/`pg_ctl`) -- the views rely on
+`security_invoker`. To run against a server you already have instead:
+
+```bash
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres npm run test:rls
+```
+
 ### Linting & Formatting
 
 ```bash

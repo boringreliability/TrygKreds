@@ -38,3 +38,34 @@ jobs:
           name: coverage-report
           path: coverage/
           retention-days: 7
+
+  # RLS is database behaviour. The Jest suite mocks Supabase, so it would pass
+  # against a database with row level security switched off entirely. This job
+  # applies the real migrations to a real PostgreSQL and asserts the privacy
+  # guarantees against it.
+  rls-tests:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        # Must be 15 or newer: the migrations rely on views declared
+        # WITH (security_invoker = true).
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run RLS test suite
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+        run: npm run test:rls

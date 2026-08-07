@@ -46,14 +46,7 @@ describe('JoinGroupScreen', () => {
   it('should join group with valid invite code', async () => {
     mockGroups.joinGroup.mockResolvedValue({
       success: true,
-      group: {
-        id: 'group-123',
-        name: 'Family',
-        ownerId: 'other-user',
-        inviteCode: 'ABC123',
-        createdAt: new Date().toISOString(),
-        memberCount: 2,
-      },
+      groupId: 'group-123',
     });
 
     const { getByPlaceholderText, getAllByText } = render(
@@ -65,7 +58,7 @@ describe('JoinGroupScreen', () => {
     fireEvent.press(joinButtons[joinButtons.length - 1]);
 
     await waitFor(() => {
-      expect(mockGroups.joinGroup).toHaveBeenCalledWith('ABC123', mockUser.id);
+      expect(mockGroups.joinGroup).toHaveBeenCalledWith('ABC123');
       expect(mockOnSuccess).toHaveBeenCalled();
     });
   });
@@ -130,14 +123,7 @@ describe('JoinGroupScreen', () => {
   it('should normalize invite code to uppercase', async () => {
     mockGroups.joinGroup.mockResolvedValue({
       success: true,
-      group: {
-        id: 'group-123',
-        name: 'Family',
-        ownerId: 'other-user',
-        inviteCode: 'ABC123',
-        createdAt: new Date().toISOString(),
-        memberCount: 2,
-      },
+      groupId: 'group-123',
     });
 
     const { getByPlaceholderText, getAllByText } = render(
@@ -149,7 +135,7 @@ describe('JoinGroupScreen', () => {
     fireEvent.press(joinButtons[joinButtons.length - 1]);
 
     await waitFor(() => {
-      expect(mockGroups.joinGroup).toHaveBeenCalledWith('ABC123', mockUser.id);
+      expect(mockGroups.joinGroup).toHaveBeenCalledWith('ABC123');
     });
   });
 });
