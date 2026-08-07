@@ -17,7 +17,11 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          # 22+, not 20. @supabase/supabase-js declares engines >=22.0.0 and
+          # needs the global WebSocket that Node gained in 22 -- on 20 the client
+          # throws while being constructed, which happens at module load, so
+          # every suite importing it fails before a single test runs.
+          node-version: '22'
           cache: 'npm'
 
       # The privacy guards run before install: they read package.json and our own

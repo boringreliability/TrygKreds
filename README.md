@@ -30,7 +30,7 @@ specific, and it lists the limitations too.
 
 ### Prerequisites
 
-- Node.js 20+
+- Node.js 22+ (`@supabase/supabase-js` requires the global `WebSocket` added in Node 22)
 - npm or yarn
 - Expo CLI (`npm install -g expo-cli`)
 

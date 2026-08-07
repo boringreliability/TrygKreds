@@ -159,6 +159,10 @@ it in one place is why it is there.
 
 ## 5. Tech stack
 
+- **Node 22+.** A hard requirement, not a preference: `@supabase/supabase-js`
+  declares `engines >=22.0.0` and needs the global `WebSocket` that Node gained in 22. On Node 20 the client throws while being constructed, and because that
+  happens at module load, every test suite importing it fails before a single test
+  runs. CI pins 22 and `package.json` declares it.
 - **Expo SDK 57**, React Native 0.86, React 19, TypeScript 6, expo-router
 - **Supabase**: Postgres, Auth, Edge Functions
 - **Maps**: `react-native-maps`

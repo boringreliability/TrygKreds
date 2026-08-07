@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "A privacy-friendly alternative to Life360",
   "main": "expo-router/entry",
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
