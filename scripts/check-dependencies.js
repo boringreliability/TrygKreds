@@ -62,6 +62,11 @@ const ALLOWED_RUNTIME_DEPENDENCIES = {
     reason: 'Status bar styling.',
     network: 'none',
   },
+  'expo-task-manager': {
+    reason:
+      'Runs the Ward 4 background location task. Required by expo-location for startLocationUpdatesAsync. Hands positions to our own code; no service of its own.',
+    network: 'none',
+  },
   react: {
     reason: 'UI library.',
     network: 'none',

@@ -31,6 +31,11 @@ import {
   getCurrentLocation,
   getForegroundPermissionStatus,
 } from '../services/location';
+import {
+  startBackgroundLocationUpdates,
+  stopBackgroundLocationUpdates,
+} from '../services/backgroundLocation';
+import { getMySharingGroupIds } from '../domain/location';
 
 interface GroupMapScreenProps {
   groupId: string;
@@ -133,12 +138,25 @@ export function GroupMapScreen({
           await updateMyLocation(user.id, groupId, locationResult.coordinates);
         }
 
+        // Ward 4: keep the position fresh while the app is backgrounded. A
+        // refused background permission is not a failure of sharing -- foreground
+        // sharing still works -- so it is not surfaced as an error.
+        await startBackgroundLocationUpdates();
+
         setIsSharingEnabled(true);
       } else {
         // Disabling sharing. disableLocationSharing also deletes the stored
         // position -- the screen does not have to remember to, and no caller
         // can forget.
         await disableLocationSharing(user.id, groupId);
+
+        // Only stop the background task once nothing is being shared anywhere.
+        // Sharing is per group, and the task serves all of them.
+        const remaining = await getMySharingGroupIds(user.id);
+        if (remaining.success && remaining.groupIds?.length === 0) {
+          await stopBackgroundLocationUpdates();
+        }
+
         setIsSharingEnabled(false);
       }
 

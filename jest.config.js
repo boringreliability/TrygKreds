@@ -14,6 +14,7 @@ const config = {
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
     '^expo-location$': '<rootDir>/tests/mocks/expo-location.ts',
+    '^expo-task-manager$': '<rootDir>/tests/mocks/expo-task-manager.ts',
     '^react-native-maps$': '<rootDir>/tests/mocks/react-native-maps.tsx',
   },
   collectCoverageFrom: [

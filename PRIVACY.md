@@ -17,9 +17,10 @@ a limitation rather than a guarantee, it is listed under
    `scripts/check-dependencies.js`, which fails the build on any runtime
    dependency that is not on an explicit allowlist. One caveat about map tiles
    is described under [Limitations](#limitations-and-honest-caveats).
-2. **No location history.** One row per user per group, overwritten in place.
-   There is no table that could answer "where was she last Tuesday?", because
-   the old value is gone the moment a new one arrives.
+2. **No location history.** One row per user per group, overwritten in place --
+   including by background updates. There is no table that could answer "where
+   was she last Tuesday?", because the old value is gone the moment a new one
+   arrives.
 3. **Turning sharing off deletes your position.** It is not merely hidden behind
    a policy. A position sitting in the database is a position sitting in the
    database.
@@ -117,6 +118,14 @@ account. Turning sharing off **deletes** the row -- `disableLocationSharing()`
 does the deletion itself, so no caller can turn sharing off and leave the
 position behind.
 
+**Background updates:** while you are sharing, the app updates this row in the
+background so "last seen" stays meaningful. It is an upsert against the
+constraint above, so the row is _replaced_, never added to. Updates are rate
+limited to one per five minutes per group and require having moved at least 100
+metres; the thresholds live in `src/domain/backgroundLocation.ts`. The background
+task re-checks on every run that you are signed in and sharing with at least one
+group, and stops itself if not.
+
 ### `location_sharing_settings`
 
 | Field                                    | Why                                     |
@@ -152,6 +161,9 @@ request, and fail the build rather than warn:
 | Profiles are visible only within shared groups   | `supabase/tests/03_profiles_test.sql`                 |
 | Profiles hold no email address                   | `supabase/tests/03_profiles_test.sql`                 |
 | Turning sharing off deletes the position         | `src/domain/location.test.ts`                         |
+| Background updates cannot accumulate a history   | `supabase/tests/04_no_history_test.sql`               |
+| No table looks like a location history           | `supabase/tests/04_no_history_test.sql`               |
+| Background work stops when signed out            | `src/domain/backgroundLocationSync.test.ts`           |
 
 The row level security tests run against a real PostgreSQL instance, not against
 mocks. This matters: the application test suite mocks Supabase entirely, so it

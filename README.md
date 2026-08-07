@@ -11,7 +11,8 @@ specific, and it lists the limitations too.
 ## Features (MVP)
 
 - **Groups ("circles")**: Create and join groups via invite code
-- **Location sharing**: Share last known location with group members
+- **Location sharing**: Share last known location with group members, kept up to
+  date in the background while sharing is on
 - **SOS (panic button)**: Alert all group members in emergencies
 - **Privacy controls**: Pause sharing, see who can view your location
 

@@ -1,6 +1,9 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { AuthProvider } from '../src/hooks/useAuth';
+// Imported for its side effect: defines the background location task handler at
+// module load, so a background event delivered into a cold start finds it.
+import '../src/services/registerBackgroundTasks';
 
 export default function RootLayout() {
   return (

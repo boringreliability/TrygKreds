@@ -7,6 +7,7 @@
 
 import { supabase } from '../services/supabase';
 import { getProfilesForUsers } from './profiles';
+import type { LastSentPosition } from './backgroundLocation';
 
 // Types
 export interface LocationCoordinates {
@@ -271,6 +272,68 @@ export async function getLocationSharingStatus(
 }
 
 // Remove user's location from a group
+/**
+ * Group ids the user is currently sharing their location with.
+ *
+ * The background task needs this on every run: it is half of the gate that
+ * decides whether to do any work at all.
+ */
+export async function getMySharingGroupIds(
+  userId: string
+): Promise<{ success: boolean; groupIds?: string[]; error?: string }> {
+  const { data, error } = await supabase
+    .from('location_sharing_settings')
+    .select('group_id')
+    .eq('user_id', userId)
+    .eq('sharing_enabled', true);
+
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  return {
+    success: true,
+    groupIds: (data || []).map((row: { group_id: string }) => row.group_id),
+  };
+}
+
+/**
+ * The user's own stored positions, keyed by group id.
+ *
+ * This is where "when did I last send, and from where?" comes from. Deriving it
+ * from the row we are about to overwrite means there is no separate local copy
+ * of your position on the device to keep in sync -- or to leak. Reading your own
+ * row is permitted by the RLS policy on member_locations even when you are not
+ * sharing.
+ */
+export async function getMyStoredPositions(
+  userId: string
+): Promise<{
+  success: boolean;
+  positions?: Record<string, LastSentPosition>;
+  error?: string;
+}> {
+  const { data, error } = await supabase
+    .from('member_locations')
+    .select('group_id, latitude, longitude, updated_at')
+    .eq('user_id', userId);
+
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  const positions: Record<string, LastSentPosition> = {};
+  for (const row of data || []) {
+    positions[row.group_id] = {
+      latitude: row.latitude,
+      longitude: row.longitude,
+      sentAt: new Date(row.updated_at).getTime(),
+    };
+  }
+
+  return { success: true, positions };
+}
+
 export async function removeMyLocation(
   userId: string,
   groupId: string

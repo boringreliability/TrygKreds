@@ -9,12 +9,17 @@ import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import { GroupMapScreen } from './GroupMapScreen';
 import * as location from '../domain/location';
 import * as locationService from '../services/location';
+import * as backgroundLocation from '../services/backgroundLocation';
 
 jest.mock('../domain/location');
 jest.mock('../services/location');
+jest.mock('../services/backgroundLocation');
 
 const mockLocation = location as jest.Mocked<typeof location>;
 const mockLocationService = locationService as jest.Mocked<typeof locationService>;
+const mockBackground = backgroundLocation as jest.Mocked<
+  typeof backgroundLocation
+>;
 
 // Mock react-native-maps - uses the mock from jest.config.js moduleNameMapper
 
@@ -54,6 +59,13 @@ describe('GroupMapScreen', () => {
       status: 'undetermined',
       canAskAgain: true,
     });
+    // Ward 4: sharing nowhere by default, so the background task is not running.
+    mockLocation.getMySharingGroupIds.mockResolvedValue({
+      success: true,
+      groupIds: [],
+    });
+    mockBackground.startBackgroundLocationUpdates.mockResolvedValue(true);
+    mockBackground.stopBackgroundLocationUpdates.mockResolvedValue(undefined);
   });
 
   describe('Map display', () => {
@@ -390,6 +402,123 @@ describe('GroupMapScreen', () => {
       expect(queryAllByText('user-2')).toHaveLength(0);
       // Nor the old generic label.
       expect(queryAllByText('Member')).toHaveLength(0);
+    });
+  });
+  // Ward 4: the background task serves every group, so the screen starts it when
+  // sharing begins and stops it only when nothing is shared anywhere.
+  describe('Background updates', () => {
+    beforeEach(() => {
+      mockLocationService.getForegroundPermissionStatus.mockResolvedValue({
+        status: 'granted',
+        canAskAgain: true,
+      });
+      mockLocation.enableLocationSharing.mockResolvedValue({ success: true });
+      mockLocation.disableLocationSharing.mockResolvedValue({ success: true });
+      mockLocationService.getCurrentLocation.mockResolvedValue({
+        success: true,
+        coordinates: { latitude: 55.6761, longitude: 12.5683, accuracy: 10 },
+      });
+      mockLocation.updateMyLocation.mockResolvedValue({ success: true });
+    });
+
+    it('should start background updates when sharing is enabled', async () => {
+      mockLocation.getLocationSharingStatus.mockResolvedValue({
+        success: true,
+        status: {
+          userId: mockUser.id,
+          groupId: 'group-123',
+          sharingEnabled: false,
+        },
+      });
+
+      const { getByTestId } = render(<GroupMapScreen {...defaultProps} />);
+
+      await waitFor(() => {
+        fireEvent(getByTestId('location-sharing-toggle'), 'valueChange', true);
+      });
+
+      await waitFor(() => {
+        expect(mockBackground.startBackgroundLocationUpdates).toHaveBeenCalled();
+      });
+    });
+
+    it('should stop background updates when nothing is shared any more', async () => {
+      mockLocation.getLocationSharingStatus.mockResolvedValue({
+        success: true,
+        status: {
+          userId: mockUser.id,
+          groupId: 'group-123',
+          sharingEnabled: true,
+        },
+      });
+      mockLocation.getMySharingGroupIds.mockResolvedValue({
+        success: true,
+        groupIds: [],
+      });
+
+      const { getByTestId } = render(<GroupMapScreen {...defaultProps} />);
+
+      await waitFor(() => {
+        fireEvent(getByTestId('location-sharing-toggle'), 'valueChange', false);
+      });
+
+      await waitFor(() => {
+        expect(mockBackground.stopBackgroundLocationUpdates).toHaveBeenCalled();
+      });
+    });
+
+    it('should keep background updates running while another group is shared', async () => {
+      mockLocation.getLocationSharingStatus.mockResolvedValue({
+        success: true,
+        status: {
+          userId: mockUser.id,
+          groupId: 'group-123',
+          sharingEnabled: true,
+        },
+      });
+      // Still sharing with a different group after turning this one off.
+      mockLocation.getMySharingGroupIds.mockResolvedValue({
+        success: true,
+        groupIds: ['group-other'],
+      });
+
+      const { getByTestId } = render(<GroupMapScreen {...defaultProps} />);
+
+      await waitFor(() => {
+        fireEvent(getByTestId('location-sharing-toggle'), 'valueChange', false);
+      });
+
+      await waitFor(() => {
+        expect(mockLocation.disableLocationSharing).toHaveBeenCalled();
+      });
+      expect(mockBackground.stopBackgroundLocationUpdates).not.toHaveBeenCalled();
+    });
+
+    // A refused background permission still leaves foreground sharing working,
+    // so it must not read as a failure to share.
+    it('should still enable sharing when background permission is refused', async () => {
+      mockLocation.getLocationSharingStatus.mockResolvedValue({
+        success: true,
+        status: {
+          userId: mockUser.id,
+          groupId: 'group-123',
+          sharingEnabled: false,
+        },
+      });
+      mockBackground.startBackgroundLocationUpdates.mockResolvedValue(false);
+
+      const { getByTestId, queryByText } = render(
+        <GroupMapScreen {...defaultProps} />
+      );
+
+      await waitFor(() => {
+        fireEvent(getByTestId('location-sharing-toggle'), 'valueChange', true);
+      });
+
+      await waitFor(() => {
+        expect(mockLocation.enableLocationSharing).toHaveBeenCalled();
+      });
+      expect(queryByText(/permission is required/i)).toBeNull();
     });
   });
 });
