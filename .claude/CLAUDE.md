@@ -27,19 +27,54 @@ the original plan. Feature files for every ward live in `/specs`.
 | 4    | Background location updates                                          |
 | 5    | SOS with push notifications                                          |
 | 6    | Privacy controls: who can see me, pause                              |
+| 6.1  | Configuration validation: the app refuses to start half-configured   |
+| 6.2  | Grant hygiene: an unauthenticated caller can do nothing              |
 
-Current shape: **335 Jest tests**, **95 RLS assertions** against a real
+Current shape: **344 Jest tests**, **111 RLS assertions** against a real
 PostgreSQL, two CI guards that fail the build.
+
+### Verified on hardware
+
+The app builds, installs and runs on a physical Android device (Galaxy S25
+Ultra), against a live Supabase project, with the real configuration rather than
+a placeholder. Sign-up works end to end: the confirmation mail arrives, the
+account is confirmed, and `handle_new_user` creates the profile row.
 
 ### Not yet verified
 
-- **Nothing has run on a real phone.** Background location, push delivery, map
-  tiles and permission dialogs are tested against mocks and a real Postgres — not
-  against iOS or Android. This is the next real verification step.
+- **Ward 1–3 are only partly walked through on the device.** Sign-up and sign-in
+  are confirmed; creating a group, redeeming an invite code, sharing a position
+  and seeing it on the map are not.
+- **Ward 4 and Ward 5 have not run on a device at all.** Background location and
+  push delivery remain tested against mocks only.
+- **The auth flow strands a phone-only user.** `signUp()` sends no
+  `emailRedirectTo`, the app has no deep-link handler, and the project's Site URL
+  is still `http://localhost:3000`. Confirming an address therefore only works if
+  you happen to open the link on a machine with a browser. Its own ward.
 - **The Edge Function is reviewed, not unit-tested.** It is Deno; Jest cannot run
   it. Only its privacy-relevant properties are enforced, by reading its source.
-- Two `expo-doctor` checks (config schema, React Native Directory) need network
-  access that was unavailable while building, and should be run before release.
+
+### The live project
+
+The schema is applied to a Supabase project, and its migration history was
+repaired by hand.
+
+The migrations went in through the Management API rather than `supabase db
+push`, because no Postgres-protocol route leaves the development machine:
+`db.<ref>.supabase.co` has no A record and the machine has no outbound IPv6,
+while the IPv4 pooler refuses 5432 and 6543 though 443 on the same host answers.
+`supabase link` is a dead end too — it fails parsing the timestamp on the new
+`sb_publishable_` key format, on both 2.112.0 and 2.113.0-beta.4.
+
+`apply_migration` invents its own version timestamps, so the recorded history
+did not match the repository's filenames and a future `db push` would have
+re-run all of them — dying partway through on a `CREATE POLICY` that has no
+`DROP` before it. The versions were rewritten by hand to match. If you apply
+migrations that way again, repair the history afterwards.
+
+Running the RLS suite locally needs `DATABASE_URL` pointed at a PostgreSQL
+server. Homebrew's `libpq` provides `initdb` but not the `postgres` binary, so
+`test-rls.sh`'s throwaway-cluster mode cannot start one.
 
 ---
 
@@ -133,6 +168,16 @@ Saying either when untrue is worse than an error message.
 
 Use `formatMemberName()` / `memberInitial()`. An unnamed member gets a neutral
 placeholder, never a fragment of a UUID.
+
+### An unauthenticated caller holds no privilege on anything in `public`
+
+Revoking from a named role does not touch a `PUBLIC` grant, and revoking from
+`PUBLIC` does not touch a named grant — that mismatch is how `anon` kept
+`EXECUTE` on every function on the live project while the migrations' own
+comments said otherwise, unnoticed until the first device verification.
+PostgreSQL cannot prevent a function added later from being anon-reachable:
+whoever adds one revokes `PUBLIC` and grants explicitly, and
+`supabase/tests/06_grants_test.sql` fails the build if they forget.
 
 ---
 
