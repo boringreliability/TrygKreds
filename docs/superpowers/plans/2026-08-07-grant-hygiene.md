@@ -387,6 +387,23 @@ REVOKE ALL ON ALL TABLES    IN SCHEMA public FROM anon;
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM anon;
 REVOKE ALL ON ALL ROUTINES  IN SCHEMA public FROM anon;
 
+-- Revoking from `anon` by name is not enough on its own. Only four functions
+-- were ever revoked from PUBLIC -- join_group_by_invite_code,
+-- rotate_invite_code, register_push_token and remove_my_push_token. The rest
+-- still carry PostgreSQL's default EXECUTE to PUBLIC, and a role reaches a
+-- function through PUBLIC as readily as through a grant of its own. Without
+-- this line, `anon` keeps access to is_group_member and shares_group_with no
+-- matter what is revoked from it by name.
+REVOKE ALL ON ALL ROUTINES IN SCHEMA public FROM PUBLIC;
+
+-- Which immediately takes something away that the app needs. is_group_member
+-- and shares_group_with were never granted to `authenticated` either -- they
+-- relied on PUBLIC too. Every RLS policy calls one of them, and a policy
+-- expression is evaluated as the querying user, so without EXECUTE every read
+-- path fails. Granting them explicitly is what makes the revoke above safe.
+GRANT EXECUTE ON FUNCTION public.is_group_member(uuid)   TO authenticated;
+GRANT EXECUTE ON FUNCTION public.shares_group_with(uuid) TO authenticated;
+
 
 -- ===========================================================================
 -- 2. And what it would otherwise be given next time
@@ -433,7 +450,10 @@ npm run test:rls 2>&1 | tail -20
 
 Expected: every assertion passes, and the count has grown by the 14 assertions added in Task 1.
 
-Pay attention to `02_rls_test.sql` in particular: it creates groups, which fires `add_owner_as_member`. If that suite still passes, the trigger revoke in section 3 is safe.
+Two suites matter more than the rest here, and both are load-bearing checks on section 1's `REVOKE ALL ON ALL ROUTINES ... FROM PUBLIC`:
+
+- `02_rls_test.sql` creates groups, which fires `add_owner_as_member`. If it still passes, the trigger revoke in section 3 is safe.
+- Every read-path assertion in `02_rls_test.sql` and `03_profiles_test.sql` goes through `is_group_member` or `shares_group_with` inside a policy. If the two `GRANT EXECUTE … TO authenticated` lines were omitted or misspelled, those suites collapse wholesale rather than failing in one place. A broad collapse here means the grant, not the policy, is what broke.
 
 - [ ] **Step 3: Break it on purpose and confirm the suite notices**
 
