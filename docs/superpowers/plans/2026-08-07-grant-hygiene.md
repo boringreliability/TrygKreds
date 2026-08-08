@@ -18,6 +18,13 @@
 - **The test runner applies files in this order:** `00_supabase_shim.sql`, then every migration in lexical order, then `01_test_helpers.sql`, then every `*_test.sql` in lexical order.
 - **Conventional commits.** Prettier covers `**/*.{ts,tsx,js,jsx,json,md}` — not `.sql`, not `.feature`.
 - **PRIVACY.md is not updated.** What is stored, who can read it and how long it is kept are unchanged.
+- **Run the suite with `DATABASE_URL` set.** On this machine `initdb` comes from Homebrew's `libpq`, which ships the client tools but not the `postgres` server binary, so `test-rls.sh`'s throwaway-cluster mode fails with _"program `postgres` is needed by initdb but was not found"_. A container is already running for this purpose. Every `npm run test:rls` in this plan means:
+
+  ```bash
+  DATABASE_URL="postgres://postgres:postgres@localhost:55432/postgres" npm run test:rls
+  ```
+
+  Baseline before any change: 95 assertions, all passing. Port 55432 is deliberate — 5432 and 5433 belong to unrelated projects of the user's and must not be touched.
 
 ---
 
