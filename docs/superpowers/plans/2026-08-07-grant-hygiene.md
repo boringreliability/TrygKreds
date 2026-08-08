@@ -225,17 +225,27 @@ SELECT test.check(
   '0'
 );
 
--- --- every function pins its search_path -----------------------------------
--- Written as "how many do not" rather than naming the two that were wrong, so
--- the assertion keeps covering functions added later.
-
+-- --- every function WE define pins its search_path -------------------------
+-- Written as "how many do not" rather than naming the two that were wrong,
+-- so the assertion keeps covering functions added later.
+--
+-- Extension-owned functions are excluded. The shim installs pgcrypto into
+-- public, which puts ~36 functions there that are not ours to configure. On
+-- the real project pgcrypto lives in the `extensions` schema, so counting
+-- them would be asserting against a quirk of the harness -- exactly the kind
+-- of harness-versus-production divergence this ward exists to remove.
 SELECT test.check(
-  'grants: every function in public pins search_path',
+  'grants: every function we define pins search_path',
   (
     SELECT count(*)::text
     FROM pg_proc p
     WHERE p.pronamespace = 'public'::regnamespace
       AND p.prokind = 'f'
+      AND NOT EXISTS (
+        SELECT 1 FROM pg_depend d
+        WHERE d.objid = p.oid
+          AND d.deptype = 'e'
+      )
       AND NOT EXISTS (
         SELECT 1
         FROM unnest(coalesce(p.proconfig, '{}'::text[])) AS c
@@ -243,6 +253,51 @@ SELECT test.check(
       )
   ),
   '0'
+);
+
+-- --- and nothing outside the eight named above ----------------------------
+-- The assertions above name each function. This one asks the same question
+-- of every function we define, so a new one that leaks is caught by the
+-- suite rather than by an advisor months later. has_function_privilege
+-- resolves access through PUBLIC as well as through named grants, which is
+-- what makes it the right question.
+SELECT test.check(
+  'grants: anon can execute none of the functions we define',
+  (
+    SELECT count(*)::text
+    FROM pg_proc p
+    WHERE p.pronamespace = 'public'::regnamespace
+      AND p.prokind = 'f'
+      AND NOT EXISTS (
+        SELECT 1 FROM pg_depend d
+        WHERE d.objid = p.oid
+          AND d.deptype = 'e'
+      )
+      AND has_function_privilege('anon', p.oid, 'EXECUTE')
+  ),
+  '0'
+);
+
+-- --- what a new function actually gets, recorded on purpose ---------------
+-- This asserts something we do NOT want, and that is deliberate. It pins
+-- PostgreSQL's behaviour in place: a function created without an explicit
+-- revoke IS reachable by anon, because the built-in default grants EXECUTE
+-- to PUBLIC and no ALTER DEFAULT PRIVILEGES can take that away.
+--
+-- It exists so nobody spends another afternoon trying to prevent this in
+-- the migration, and so that if a future PostgreSQL ever does make it
+-- preventable, this assertion goes red and tells us. The assertion above is
+-- what actually protects the app.
+CREATE FUNCTION public.ward_6_2_probe()
+RETURNS integer
+LANGUAGE sql
+SET search_path = public
+AS $$ SELECT 1 $$;
+
+SELECT test.check(
+  'grants: a new function is anon-reachable until its author revokes PUBLIC',
+  has_function_privilege('anon', 'public.ward_6_2_probe()', 'EXECUTE')::text,
+  'true'
 );
 
 \o
@@ -416,6 +471,22 @@ GRANT EXECUTE ON FUNCTION public.shares_group_with(uuid) TO authenticated;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON TABLES    FROM anon;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON SEQUENCES FROM anon;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON ROUTINES  FROM anon;
+
+-- There is deliberately no `ALTER DEFAULT PRIVILEGES ... REVOKE EXECUTE ON
+-- FUNCTIONS FROM PUBLIC` here, though it looks like the obvious next line.
+-- It does nothing. The stored default ACL is a delta on top of PostgreSQL's
+-- built-in default rather than a replacement for it, so PUBLIC is never in
+-- the stored ACL and a REVOKE has nothing to remove. Verified by replaying
+-- this sequence and inspecting pg_default_acl: after the revoke the stored
+-- ACL was unchanged and the next function created still carried `=X/owner`,
+-- which is the PUBLIC grant.
+--
+-- So a function added later IS reachable by anon until whoever adds it
+-- revokes PUBLIC and grants explicitly, the way the four functions in the
+-- earlier migrations do. What stops that from going unnoticed is
+-- supabase/tests/06_grants_test.sql, which fails the build if any function
+-- we define is reachable by anon. Detection, not prevention -- the same
+-- shape as scripts/check-dependencies.js and scripts/check-network-access.js.
 
 
 -- ===========================================================================

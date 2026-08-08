@@ -76,12 +76,33 @@ GRANT SELECT ON auth.users TO authenticated, service_role;
 -- so every assertion in the suite runs as `authenticated`. These default
 -- privileges make the tables that later migrations create reachable by that
 -- role, which is what Supabase arranges in a real project.
+--
+-- READ THIS BEFORE REMOVING ANYTHING BELOW.
+--
+-- A grant missing here does not make the harness stricter. It makes it lie.
+-- Supabase grants `anon` and `authenticated` privileges DIRECTLY, by name. A
+-- migration that revokes from PUBLIC therefore does not take them away. If the
+-- harness never granted them in the first place, the revoke appears to work
+-- here and does nothing in production -- and the suite reports green on a
+-- guarantee that does not hold. That is exactly how the Ward 6.2 hole survived
+-- unnoticed: `anon` held EXECUTE on every function on the live project while
+-- this suite said it held none.
+--
+-- So these grants are not convenience. They are the part of the model that
+-- makes a revoke testable.
 -- ---------------------------------------------------------------------------
 GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
 
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO anon;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
   GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO authenticated;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
   GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO service_role;
+
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
-  GRANT USAGE, SELECT ON SEQUENCES TO authenticated, service_role;
+  GRANT USAGE, SELECT ON SEQUENCES TO anon, authenticated, service_role;
+
+-- The line whose absence caused all of this.
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT EXECUTE ON FUNCTIONS TO anon, authenticated, service_role;
