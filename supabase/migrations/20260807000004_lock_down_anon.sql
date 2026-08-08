@@ -51,8 +51,8 @@ GRANT EXECUTE ON FUNCTION public.shares_group_with(uuid) TO authenticated;
 -- 2. And what it would otherwise be given next time
 -- ===========================================================================
 --
--- Without this, the next CREATE FUNCTION hands anon EXECUTE again and the hole
--- reopens silently. ALTER DEFAULT PRIVILEGES applies to objects created by the
+-- Without this, the next CREATE FUNCTION hands anon a *named* EXECUTE grant
+-- again. ALTER DEFAULT PRIVILEGES applies to objects created by the
 -- role that runs it, which is the role that runs migrations -- the same role in
 -- both the test harness and the live project.
 ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON TABLES    FROM anon;

@@ -1,7 +1,7 @@
 # Ward 6.2 — grant hygiene and shim fidelity
 
 **Date:** 2026-08-07
-**Status:** approved, not yet implemented
+**Status:** implemented and applied to the live project
 
 ## Why
 
@@ -54,11 +54,11 @@ hold in production is worse than no suite, because it looks like evidence.
 
 ## Decisions
 
-| Question                   | Decision                                                                                                                             |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| How far to lock `anon` out | Completely — no privilege on any table, view or function in `public`, with default privileges set so future objects inherit the rule |
-| Shim fidelity              | Fix it and document the trap in the file itself. No drift-detection machinery                                                        |
-| Order of work              | Shim first, then failing assertions, then the migration                                                                              |
+| Question                   | Decision                                                                                                                                                                                                                                                                            |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| How far to lock `anon` out | Completely — `anon` loses every privilege it holds on any table, view or function in `public`. Future functions are covered by detection rather than prevention: PostgreSQL will not let a default-privileges change take away its own built-in EXECUTE-to-PUBLIC on a new function |
+| Shim fidelity              | Fix it and document the trap in the file itself. No drift-detection machinery                                                                                                                                                                                                       |
+| Order of work              | Shim first, then failing assertions, then the migration                                                                                                                                                                                                                             |
 
 `anon` loses nothing real: sign-up and sign-in go through GoTrue, not PostgREST,
 and everything TrygKreds does requires a signed-in user. "An unauthenticated
@@ -102,8 +102,13 @@ Three questions:
 
 - Revoke every privilege on tables, views and functions in `public` from `anon`.
 - Revoke `EXECUTE` on `add_owner_as_member` and `handle_new_user` from all roles.
-- `ALTER DEFAULT PRIVILEGES` so future objects inherit the rule rather than
-  depending on someone remembering it.
+- `ALTER DEFAULT PRIVILEGES` removes Supabase's _named_ default grant to `anon`
+  on future tables, sequences and routines.
+- It cannot remove PostgreSQL's own built-in EXECUTE-to-PUBLIC on a future
+  function: the stored default ACL is a delta on top of that built-in default,
+  so `PUBLIC` is never in it and a `REVOKE` has nothing to take away. A
+  catalogue-wide assertion is therefore the enforcement for functions added
+  later, not the migration.
 - `SET search_path = public` on `update_updated_at_column` and
   `generate_invite_code` — the two functions that lack it while every other one
   has it.

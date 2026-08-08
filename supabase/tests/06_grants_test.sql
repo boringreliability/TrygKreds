@@ -96,14 +96,27 @@ SELECT test.check(
 );
 
 -- --- anon holds nothing on any table or view -------------------------------
-
+-- has_table_privilege, not information_schema.role_table_grants. A PUBLIC
+-- grant shows up there under the grantee 'PUBLIC', so a query filtered on
+-- 'anon' reports zero while anon can still read the table -- which is this
+-- ward's own bug, in the assertion meant to enforce this ward's rule.
+-- has_table_privilege resolves access however it is reached.
 SELECT test.check(
   'grants: anon holds no privilege on any table or view in public',
   (
     SELECT count(*)::text
-    FROM information_schema.role_table_grants
-    WHERE grantee = 'anon'
-      AND table_schema = 'public'
+    FROM pg_class c
+    WHERE c.relnamespace = 'public'::regnamespace
+      AND c.relkind IN ('r', 'v', 'm', 'p')
+      AND NOT EXISTS (
+        SELECT 1 FROM pg_depend d
+        WHERE d.objid = c.oid
+          AND d.deptype = 'e'
+      )
+      AND has_table_privilege(
+            'anon', c.oid,
+            'SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER'
+          )
   ),
   '0'
 );
@@ -123,6 +136,8 @@ SELECT test.check(
     SELECT count(*)::text
     FROM pg_proc p
     WHERE p.pronamespace = 'public'::regnamespace
+      -- Procedures (prokind = 'p') are excluded: PostgREST does not expose
+      -- them, so they carry no anon-reachability risk this suite cares about.
       AND p.prokind = 'f'
       AND NOT EXISTS (
         SELECT 1 FROM pg_depend d
@@ -156,6 +171,8 @@ SELECT test.check(
     SELECT count(*)::text
     FROM pg_proc p
     WHERE p.pronamespace = 'public'::regnamespace
+      -- Procedures (prokind = 'p') are excluded: PostgREST does not expose
+      -- them, so they carry no anon-reachability risk this suite cares about.
       AND p.prokind = 'f'
       AND NOT EXISTS (
         SELECT 1 FROM pg_depend d

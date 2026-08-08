@@ -27,8 +27,10 @@ the original plan. Feature files for every ward live in `/specs`.
 | 4    | Background location updates                                          |
 | 5    | SOS with push notifications                                          |
 | 6    | Privacy controls: who can see me, pause                              |
+| 6.1  | Configuration validation: the app refuses to start half-configured   |
+| 6.2  | Grant hygiene: an unauthenticated caller can do nothing              |
 
-Current shape: **335 Jest tests**, **95 RLS assertions** against a real
+Current shape: **344 Jest tests**, **111 RLS assertions** against a real
 PostgreSQL, two CI guards that fail the build.
 
 ### Verified on hardware
@@ -166,6 +168,16 @@ Saying either when untrue is worse than an error message.
 
 Use `formatMemberName()` / `memberInitial()`. An unnamed member gets a neutral
 placeholder, never a fragment of a UUID.
+
+### An unauthenticated caller holds no privilege on anything in `public`
+
+Revoking from a named role does not touch a `PUBLIC` grant, and revoking from
+`PUBLIC` does not touch a named grant — that mismatch is how `anon` kept
+`EXECUTE` on every function on the live project while the migrations' own
+comments said otherwise, unnoticed until the first device verification.
+PostgreSQL cannot prevent a function added later from being anon-reachable:
+whoever adds one revokes `PUBLIC` and grants explicitly, and
+`supabase/tests/06_grants_test.sql` fails the build if they forget.
 
 ---
 

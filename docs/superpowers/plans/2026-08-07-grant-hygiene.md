@@ -96,11 +96,18 @@ Feature: An unauthenticated caller can do nothing
     Given every function in the public schema
     Then each should have search_path set explicitly
 
-  Scenario: The rule survives the next function someone adds
-    # Without default privileges, the next CREATE FUNCTION hands anon EXECUTE
-    # again and nobody notices until an advisor is run months later.
-    Given a new function is created in public after this migration
-    Then anon should not receive EXECUTE on it
+  Scenario: A function added later cannot leak unnoticed
+    # Prevention is not available: PostgreSQL's built-in default grants EXECUTE
+    # on a new function to PUBLIC, and ALTER DEFAULT PRIVILEGES cannot remove
+    # it -- the stored default ACL is a delta on top of the built-in one, so
+    # there is nothing for a REVOKE to take away.
+    #
+    # So this is caught rather than prevented, like the other guards in this
+    # repository. Whoever adds a function revokes PUBLIC and grants explicitly;
+    # if they forget, the suite says so.
+    Given someone adds a function to public without revoking PUBLIC
+    When the RLS suite runs
+    Then it should fail and name the function
 
   Scenario: The harness tells the truth about grants
     # This is the reason the ward exists. Before this change the harness gave
