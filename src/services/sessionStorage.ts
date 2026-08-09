@@ -58,27 +58,40 @@ async function storedCount(key: string): Promise<number> {
 
 export const sessionStorage = {
   async getItem(key: string): Promise<string | null> {
-    const count = await storedCount(key);
-    if (count === 0) return null;
+    try {
+      const count = await storedCount(key);
+      if (count === 0) return null;
 
-    const parts: string[] = [];
-    for (let i = 0; i < count; i += 1) {
-      const part = await SecureStore.getItemAsync(partKey(key, i));
+      const parts: string[] = [];
+      for (let i = 0; i < count; i += 1) {
+        const part = await SecureStore.getItemAsync(partKey(key, i));
 
-      if (part === null) {
-        // A part is missing -- an interrupted write, or storage evicting an
-        // entry. Returning what survives would hand supabase-js a truncated
-        // session, which is worse than no session: it looks valid and is not.
-        // Clear the remains so the next write starts from nothing.
-        await deleteParts(key, count);
-        await SecureStore.deleteItemAsync(key);
-        return null;
+        if (part === null) {
+          // A part is missing -- an interrupted write, or storage evicting an
+          // entry. Returning what survives would hand supabase-js a truncated
+          // session, which is worse than no session: it looks valid and is
+          // not. Clear the remains so the next write starts from nothing.
+          await deleteParts(key, count);
+          await SecureStore.deleteItemAsync(key);
+          return null;
+        }
+
+        parts.push(part);
       }
 
-      parts.push(part);
+      return parts.join('');
+    } catch {
+      // The Keystore can stop being able to decrypt an entry -- after a
+      // lock-screen change, for instance. Treated like a missing part: clear
+      // what is there and report no session, so the app falls back to signed
+      // out rather than throwing on every read until it is reinstalled.
+      try {
+        await this.removeItem(key);
+      } catch {
+        // Nothing more to do; the read still reports no session.
+      }
+      return null;
     }
-
-    return parts.join('');
   },
 
   async setItem(key: string, value: string): Promise<void> {

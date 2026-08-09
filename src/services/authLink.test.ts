@@ -1,5 +1,5 @@
 jest.mock('expo-linking', () => ({
-  createURL: jest.fn(() => 'trygkreds://auth'),
+  createURL: jest.fn(() => 'sentinel://from-createURL'),
   getInitialURL: jest.fn(async () => null),
   addEventListener: jest.fn(() => ({ remove: jest.fn() })),
 }));
@@ -33,9 +33,13 @@ beforeEach(() => {
 });
 
 describe('authRedirectUri', () => {
-  it('should be built from the app scheme rather than hardcoded', () => {
-    expect(Linking.createURL).toHaveBeenCalled();
-    expect(authRedirectUri).toBe('trygkreds://auth');
+  it('should be built from the app scheme, at the auth path', () => {
+    // The value AND the path both matter. The path is what has to match the
+    // redirect allowlist on the Supabase project and what the confirmation
+    // mail carries, and a mock returning a realistic-looking URL for any
+    // argument would let a wrong path through unnoticed.
+    expect(Linking.createURL).toHaveBeenCalledWith('auth');
+    expect(authRedirectUri).toBe('sentinel://from-createURL');
   });
 });
 
@@ -87,6 +91,27 @@ describe('handleAuthUrl', () => {
 
     expect(exchange).not.toHaveBeenCalled();
     expect(outcome).toEqual({ kind: 'unrelated' });
+  });
+
+  it('should report a failure when the exchange throws', async () => {
+    // A storage read can throw rather than return an error. Letting it
+    // escape would leave the user tapping a link that does nothing.
+    exchange.mockRejectedValue(new Error('Could not decrypt session'));
+
+    const outcome = await handleAuthUrl('trygkreds://auth?code=abc123');
+
+    expect(outcome).toEqual({
+      kind: 'failure',
+      message: 'Could not decrypt session',
+    });
+  });
+
+  it('should report a failure when the exchange throws a non-Error', async () => {
+    exchange.mockRejectedValue('something odd');
+
+    const outcome = await handleAuthUrl('trygkreds://auth?code=abc123');
+
+    expect(outcome.kind).toBe('failure');
   });
 });
 

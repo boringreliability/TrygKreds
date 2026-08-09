@@ -104,4 +104,24 @@ describe('sessionStorage', () => {
     expect(await SecureStore.getItemAsync('sb-auth-token.0')).toBeNull();
     expect(await SecureStore.getItemAsync('sb-auth-token.2')).toBeNull();
   });
+
+  it('should report no session when the store throws', async () => {
+    const spy = jest
+      .spyOn(SecureStore, 'getItemAsync')
+      .mockRejectedValueOnce(new Error('Could not decrypt'));
+
+    expect(await sessionStorage.getItem('sb-auth-token')).toBeNull();
+
+    spy.mockRestore();
+  });
+
+  it('should not throw out of getItem when the store throws', async () => {
+    const spy = jest
+      .spyOn(SecureStore, 'getItemAsync')
+      .mockRejectedValue(new Error('Could not decrypt'));
+
+    await expect(sessionStorage.getItem('sb-auth-token')).resolves.toBeNull();
+
+    spy.mockRestore();
+  });
 });

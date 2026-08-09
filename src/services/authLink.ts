@@ -38,9 +38,27 @@ export async function handleAuthUrl(url: string): Promise<AuthLinkOutcome> {
     return { kind: 'failure', message: redirect.message };
   }
 
-  const { data, error } = await supabase.auth.exchangeCodeForSession(
-    redirect.code
-  );
+  let data;
+  let error;
+  try {
+    ({ data, error } = await supabase.auth.exchangeCodeForSession(
+      redirect.code
+    ));
+  } catch (thrown) {
+    // Not every failure arrives as a returned error. Reading the PKCE
+    // verifier happens outside the client's own try block, so a storage read
+    // that throws -- a Keystore invalidated by a lock-screen change, a
+    // corrupt entry -- propagates out of here. Letting it escape would make
+    // the link do nothing at all, which is the one outcome this ward exists
+    // to prevent.
+    return {
+      kind: 'failure',
+      message:
+        thrown instanceof Error
+          ? thrown.message
+          : 'Something went wrong signing you in. Ask for a new link.',
+    };
+  }
 
   if (error) {
     return { kind: 'failure', message: error.message };
