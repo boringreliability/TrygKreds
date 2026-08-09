@@ -94,18 +94,27 @@ describe('Auth Domain', () => {
         error: null,
       });
 
-      const result = await signUp('test@example.com', 'password123');
+      const result = await signUp(
+        'test@example.com',
+        'password123',
+        'trygkreds://auth'
+      );
 
       expect(result.success).toBe(true);
       expect(result.user).toEqual(mockUser);
       expect(mockSupabaseAuth.signUp).toHaveBeenCalledWith({
         email: 'test@example.com',
         password: 'password123',
+        options: { emailRedirectTo: 'trygkreds://auth' },
       });
     });
 
     it('should return error for invalid email', async () => {
-      const result = await signUp('invalid-email', 'password123');
+      const result = await signUp(
+        'invalid-email',
+        'password123',
+        'trygkreds://auth'
+      );
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('Invalid email address');
@@ -113,7 +122,11 @@ describe('Auth Domain', () => {
     });
 
     it('should return error for weak password', async () => {
-      const result = await signUp('test@example.com', 'short');
+      const result = await signUp(
+        'test@example.com',
+        'short',
+        'trygkreds://auth'
+      );
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('Password must be at least 8 characters');
@@ -126,10 +139,32 @@ describe('Auth Domain', () => {
         error: { message: 'User already exists' },
       });
 
-      const result = await signUp('test@example.com', 'password123');
+      const result = await signUp(
+        'test@example.com',
+        'password123',
+        'trygkreds://auth'
+      );
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('User already exists');
+    });
+
+    it('should tell Supabase to send the confirmation link back to the app', async () => {
+      // Without this the link goes to the project's Site URL, which is a web page
+      // the app cannot receive. Someone with only a phone confirms their address
+      // and has no way back in.
+      mockSupabaseAuth.signUp.mockResolvedValue({
+        data: { user: { id: 'u1', email: 'a@b.test', created_at: 'now' } },
+        error: null,
+      });
+
+      await signUp('a@b.test', 'Password1', 'trygkreds://auth');
+
+      expect(mockSupabaseAuth.signUp).toHaveBeenCalledWith({
+        email: 'a@b.test',
+        password: 'Password1',
+        options: { emailRedirectTo: 'trygkreds://auth' },
+      });
     });
   });
 
