@@ -16,6 +16,7 @@ import {
   Platform,
 } from 'react-native';
 import { signIn, signUp } from '../domain/auth';
+import { authRedirectUri } from '../services/authLink';
 
 interface LoginScreenProps {
   onAuthSuccess: () => void;
@@ -34,7 +35,7 @@ export function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
 
     try {
       const result = isSignUp
-        ? await signUp(email, password)
+        ? await signUp(email, password, authRedirectUri)
         : await signIn(email, password);
 
       if (result.success) {

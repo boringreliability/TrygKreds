@@ -13,6 +13,16 @@ import * as auth from '../domain/auth';
 jest.mock('../domain/auth');
 const mockAuth = auth as jest.Mocked<typeof auth>;
 
+// authRedirectUri is built from expo-linking at module load time, which needs
+// an Expo runtime this test environment does not provide.
+jest.mock('../services/authLink', () => ({
+  // Deliberately not a realistic URL. If the component hardcoded
+  // 'trygkreds://auth' instead of importing authRedirectUri, an assertion
+  // against a realistic-looking value would pass anyway and prove nothing.
+  // This sentinel can only reach signUp by way of the import.
+  authRedirectUri: 'sentinel://from-authLink-module',
+}));
+
 describe('LoginScreen', () => {
   const mockOnAuthSuccess = jest.fn();
 
@@ -137,7 +147,8 @@ describe('LoginScreen', () => {
       await waitFor(() => {
         expect(mockAuth.signUp).toHaveBeenCalledWith(
           'new@example.com',
-          'password123'
+          'password123',
+          'sentinel://from-authLink-module'
         );
         expect(mockOnAuthSuccess).toHaveBeenCalled();
       });

@@ -35,6 +35,7 @@ const config = {
     '^expo-notifications$': '<rootDir>/tests/mocks/expo-notifications.ts',
     '^expo-device$': '<rootDir>/tests/mocks/expo-device.ts',
     '^expo-constants$': '<rootDir>/tests/mocks/expo-constants.ts',
+    '^expo-secure-store$': '<rootDir>/tests/mocks/expo-secure-store.ts',
     '^react-native-maps$': '<rootDir>/tests/mocks/react-native-maps.tsx',
   },
   collectCoverageFrom: [

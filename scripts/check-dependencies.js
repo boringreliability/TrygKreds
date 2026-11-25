@@ -46,7 +46,8 @@ const ALLOWED_RUNTIME_DEPENDENCIES = {
     network: 'none',
   },
   'expo-linking': {
-    reason: 'Deep links for navigation. Required peer of expo-router.',
+    reason:
+      'Deep links. Required peer of expo-router, and used directly to build the auth redirect URI and receive the confirmation link.',
     network: 'none',
   },
   'expo-location': {
@@ -56,6 +57,11 @@ const ALLOWED_RUNTIME_DEPENDENCIES = {
   },
   'expo-router': {
     reason: 'Navigation.',
+    network: 'none',
+  },
+  'expo-secure-store': {
+    reason:
+      "Where the Supabase session lives. The iOS Keychain and Android Keystore, so a stored session -- which is a key to seeing where someone's family is -- is protected from other apps and from a rooted device, not only by the lock screen.",
     network: 'none',
   },
   'expo-status-bar': {

@@ -68,7 +68,11 @@ function mapSupabaseUser(supabaseUser: {
 // Sign up with email and password
 export async function signUp(
   email: string,
-  password: string
+  password: string,
+  // Supplied by the caller rather than read from expo-linking here: this layer
+  // must not import Expo. Without it the confirmation link goes to the
+  // project's Site URL, which a phone cannot come back from.
+  emailRedirectTo: string
 ): Promise<AuthResult> {
   // Validate email
   if (!validateEmail(email)) {
@@ -85,6 +89,7 @@ export async function signUp(
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
+    options: { emailRedirectTo },
   });
 
   if (error) {
